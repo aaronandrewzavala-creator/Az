@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>Harmonica Tuner</title>
+
+<!-- PWA / iOS home-screen metadata -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#17110D" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Harmonica" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="icon" href="icon-192.png" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>
+  :root {
+    --bg: #17110D;
+    --bg-2: #211812;
+    --panel: #2A1E17;
+    --panel-2: #33251C;
+    --brass: #C89B3C;
+    --brass-bright: #E8C468;
+    --brass-dim: #7A6236;
+    --cream: #F2E8D5;
+    --cream-dim: #B8AB93;
+    --blow: #E8935B;
+    --blow-dim: #7A4E32;
+    --draw: #5FAFA6;
+    --draw-dim: #345A54;
+    --danger: #C8543C;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  html, body { height: 100%; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse 900px 500px at 50% -10%, rgba(200,155,60,0.10), transparent 60%),
+      repeating-linear-gradient(115deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+    color: var(--cream);
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .font-display { font-family: 'Fraunces', ui-serif, Georgia, serif; }
+  .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  ::selection { background: var(--brass); color: var(--bg); }
+  .brass-edge { border: 1px solid rgba(200,155,60,0.35); }
+  .grain-panel {
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), inset 0 0 0 1px rgba(0,0,0,0.3), 0 12px 30px -10px rgba(0,0,0,0.6);
+  }
+  @keyframes reedGlowBlow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(232,147,91,0.0), inset 0 0 14px 2px rgba(232,147,91,0.15); }
+    50% { box-shadow: 0 0 22px 4px rgba(232,147,91,0.55), inset 0 0 18px 4px rgba(232,147,91,0.35); }
+  }
+  @keyframes reedGlowDraw {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(95,175,166,0.0), inset 0 0 14px 2px rgba(95,175,166,0.15); }
+    50% { box-shadow: 0 0 22px 4px rgba(95,175,166,0.55), inset 0 0 18px 4px rgba(95,175,166,0.35); }
+  }
+  .glow-blow { animation: reedGlowBlow 0.9s ease-in-out infinite; }
+  .glow-draw { animation: reedGlowDraw 0.9s ease-in-out infinite; }
+  @keyframes riseIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .rise-in { animation: riseIn 0.5s ease-out both; }
+  @media (prefers-reduced-motion: reduce) { .glow-blow, .glow-draw, .rise-in { animation: none !important; } }
+  .needle-track {
+    background: linear-gradient(90deg,
+      var(--danger) 0%, var(--danger) 8%,
+      var(--brass-dim) 8%, var(--brass-dim) 44%,
+      var(--brass-bright) 44%, var(--brass-bright) 56%,
+      var(--brass-dim) 56%, var(--brass-dim) 92%,
+      var(--danger) 92%, var(--danger) 100%);
+  }
+  .scrollbar-thin::-webkit-scrollbar { height: 6px; width: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--brass-dim); border-radius: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  table.chart td, table.chart th { white-space: nowrap; }
+  .key-btn { transition: background-color 0.15s ease, color 0.15s ease; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+  // Register the service worker for offline app-shell + installability.
+  // No-ops harmlessly if served from a context that disallows it.
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("service-worker.js").catch(() => {
+        /* offline shell just won't be available; the live app still works */
+      });
+    });
+  }
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+/* ===========================================================
+   CONFIG — harmonica note tables, keyed by musical key.
+   Adding a new key later is just adding another entry here;
+   nothing else in the app needs to change.
+=========================================================== */
+const HARMONICA_TABLES = {
+  C: [
+    { hole: 1,  blow: { note: "C4", freq: 261.63 }, draw: { note: "D4", freq: 293.66 } },
+    { hole: 2,  blow: { note: "E4", freq: 329.63 }, draw: { note: "G4", freq: 392.00 } },
+    { hole: 3,  blow: { note: "G4", freq: 392.00 }, draw: { note: "B4", freq: 493.88 } },
+    { hole: 4,  blow: { note: "C5", freq: 523.25 }, draw: { note: "D5", freq: 587.33 } },
+    { hole: 5,  blow: { note: "E5", freq: 659.25 }, draw: { note: "F5", freq: 698.46 } },
+    { hole: 6,  blow: { note: "G5", freq: 783.99 }, draw: { note: "A5", freq: 880.00 } },
+    { hole: 7,  blow: { note: "C6", freq: 1046.50 }, draw: { note: "B5", freq: 987.77 } },
+    { hole: 8,  blow: { note: "E6", freq: 1318.51 }, draw: { note: "D6", freq: 1174.66 } },
+    { hole: 9,  blow: { note: "G6", freq: 1567.98 }, draw: { note: "F6", freq: 1396.91 } },
+    { hole: 10, blow: { note: "C7", freq: 2093.00 }, draw: { note: "A6", freq: 1760.00 } },
+  ],
+  // G harmonica = C table transposed down a perfect fourth (-5 semitones),
+  // which is how G Richter-tuned harps are actually pitched relative to C.
+  G: [
+    { hole: 1,  blow: { note: "G3", freq: 196.00 }, draw: { note: "A3", freq: 220.00 } },
+    { hole: 2,  blow: { note: "B3", freq: 246.94 }, draw: { note: "D4", freq: 293.66 } },
+    { hole: 3,  blow: { note: "D4", freq: 293.66 }, draw: { note: "F#4", freq: 369.99 } },
+    { hole: 4,  blow: { note: "G4", freq: 392.00 }, draw: { note: "A4", freq: 440.00 } },
+    { hole: 5,  blow: { note: "B4", freq: 493.88 }, draw: { note: "C5", freq: 523.25 } },
+    { hole: 6,  blow: { note: "D5", freq: 587.33 }, draw: { note: "E5", freq: 659.25 } },
+    { hole: 7,  blow: { note: "G5", freq: 783.99 }, draw: { note: "F#5", freq: 739.99 } },
+    { hole: 8,  blow: { note: "B5", freq: 987.77 }, draw: { note: "A5", freq: 880.00 } },
+    { hole: 9,  blow: { note: "D6", freq: 1174.66 }, draw: { note: "C6", freq: 1046.50 } },
+    { hole: 10, blow: { note: "G6", freq: 1567.98 }, draw: { note: "E6", freq: 1318.51 } },
+  ],
+};
+
+const KEY_LABELS = { C: "Key of C", G: "Key of G" };
+
+function flattenTargets(table) {
+  return table.flatMap(h => ([
+    { hole: h.hole, action: "blow", note: h.blow.note, freq: h.blow.freq },
+    { hole: h.hole, action: "draw", note: h.draw.note, freq: h.draw.freq },
+  ]));
+}
+
+/* ===========================================================
+   NOTE MATH
+=========================================================== */
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+function centsBetween(freqA, freqB) {
+  return 1200 * Math.log2(freqA / freqB);
+}
+
+function nearestChromaticNote(freq) {
+  if (!freq || freq <= 0) return null;
+  const midi = 69 + 12 * Math.log2(freq / 440);
+  const rounded = Math.round(midi);
+  const exactFreq = 440 * Math.pow(2, (rounded - 69) / 12);
+  const cents = centsBetween(freq, exactFreq);
+  const name = NOTE_NAMES[((rounded % 12) + 12) % 12];
+  const octave = Math.floor(rounded / 12) - 1;
+  return { name, octave, cents, exactFreq };
+}
+
+/* ===========================================================
+   HARMONICA LOGIC
+   nearestHarmonicaTarget: closest hole/action for a raw frequency,
+   given the currently selected key's target list.
+
+   detectBend(): EXTENSION SEAM, not yet implemented.
+   Bending flattens a reed's pitch below its natural target (draw
+   bends on holes 1-6, blow bends on holes 7-10, overblow/overdraw
+   elsewhere). To add it: once a stable frequency sits more than
+   ~35 cents flat of its nearest target AND is closer to that
+   target than to any *other* target a half-step below it, treat
+   it as a bend of that reed rather than "out of tune", and report
+   how many cents/semitones below the natural note it is. That
+   needs its own confidence gate (bent notes are quieter and have
+   more overtone noise than straight notes), which is why it isn't
+   folded into nearestHarmonicaTarget's plain nearest-neighbor
+   search today.
+=========================================================== */
+function nearestHarmonicaTarget(freq, targets) {
+  if (!freq || freq <= 0) return null;
+  let best = null;
+  let bestAbsCents = Infinity;
+  for (const t of targets) {
+    const cents = centsBetween(freq, t.freq);
+    const abs = Math.abs(cents);
+    if (abs < bestAbsCents) {
+      bestAbsCents = abs;
+      best = { ...t, cents };
+    }
+  }
+  return best;
+}
+
+// Stub kept intentionally inert (always returns null) — see comment above.
+// eslint-disable-next-line no-unused-vars
+function detectBend(stableFreq, targets) {
+  return null;
+}
+
+/* ===========================================================
+   PITCH ENGINE — autocorrelation with parabolic interpolation
+   and a normalized-correlation confidence score.
+=========================================================== */
+function autocorrelate(buffer, sampleRate) {
+  const SIZE = buffer.length;
+  const NO_MATCH = { freq: -1, confidence: 0 };
+
+  let rms = 0;
+  for (let i = 0; i < SIZE; i++) rms += buffer[i] * buffer[i];
+  rms = Math.sqrt(rms / SIZE);
+  if (rms < 0.008) return NO_MATCH;
+
+  let r1 = 0, r2 = SIZE - 1;
+  const threshold = 0.2;
+  for (let i = 0; i < SIZE / 2; i++) {
+    if (Math.abs(buffer[i]) > threshold) { r1 = i; break; }
+  }
+  for (let i = 1; i < SIZE / 2; i++) {
+    if (Math.abs(buffer[SIZE - i]) > threshold) { r2 = SIZE - i; break; }
+  }
+  const trimmed = buffer.slice(r1, r2);
+  const n = trimmed.length;
+  if (n < 512) return NO_MATCH;
+
+  const c = new Array(n).fill(0);
+  for (let lag = 0; lag < n; lag++) {
+    let sum = 0;
+    for (let i = 0; i < n - lag; i++) sum += trimmed[i] * trimmed[i + lag];
+    c[lag] = sum;
+  }
+
+  let d = 0;
+  while (d < n - 1 && c[d] > c[d + 1]) d++;
+
+  let maxVal = -1, maxPos = -1;
+  for (let i = d; i < n; i++) {
+    if (c[i] > maxVal) { maxVal = c[i]; maxPos = i; }
+  }
+  if (maxPos <= 0) return NO_MATCH;
+
+  const confidence = c[0] > 0 ? Math.max(0, Math.min(1, maxVal / c[0])) : 0;
+
+  let T0 = maxPos;
+  const x1 = c[T0 - 1] || c[T0];
+  const x2 = c[T0];
+  const x3 = c[T0 + 1] || c[T0];
+  const a = (x1 + x3 - 2 * x2) / 2;
+  const b = (x3 - x1) / 2;
+  if (a !== 0) T0 = T0 - b / (2 * a);
+
+  const freq = sampleRate / T0;
+  if (freq < 60 || freq > 3000) return NO_MATCH;
+  return { freq, confidence };
+}
+
+function useStableFrequency(rawFreq, historyLen = 6) {
+  const historyRef = useRef([]);
+  const [stable, setStable] = useState(null);
+  useEffect(() => {
+    if (rawFreq == null) { historyRef.current = []; setStable(null); return; }
+    const hist = historyRef.current;
+    hist.push(rawFreq);
+    if (hist.length > historyLen) hist.shift();
+    const sorted = [...hist].sort((a, b) => a - b);
+    setStable(sorted[Math.floor(sorted.length / 2)]);
+  }, [rawFreq]);
+  return stable;
+}
+
+function useStableConfidence(rawConfidence, historyLen = 6) {
+  const historyRef = useRef([]);
+  const [stable, setStable] = useState(0);
+  useEffect(() => {
+    if (rawConfidence == null) { historyRef.current = []; setStable(0); return; }
+    const hist = historyRef.current;
+    hist.push(rawConfidence);
+    if (hist.length > historyLen) hist.shift();
+    setStable(hist.reduce((s, v) => s + v, 0) / hist.length);
+  }, [rawConfidence]);
+  return stable;
+}
+
+/* ===========================================================
+   ENVIRONMENT DETECTION
+   Distinguish "the platform won't allow this context to use the
+   mic at all" from an ordinary user-declined prompt, so the
+   message people see actually tells them what to do.
+=========================================================== */
+function diagnoseEnvironment() {
+  const inIframe = window.top !== window.self;
+  const secure = typeof window.isSecureContext === "boolean" ? window.isSecureContext : location.protocol === "https:";
+  const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  const hasAudioContext = !!(window.AudioContext || window.webkitAudioContext);
+  return { inIframe, secure, hasMediaDevices, hasAudioContext };
+}
+
+/* ===========================================================
+   UI PIECES
+=========================================================== */
+function TuningMeter({ cents }) {
+  const clamped = cents == null ? 0 : Math.max(-50, Math.min(50, cents));
+  const pct = 50 + (clamped / 50) * 50;
+  const inTune = cents != null && Math.abs(cents) <= 6;
+  const label = cents == null ? "—" : (cents > 6 ? "SHARP" : cents < -6 ? "FLAT" : "IN TUNE");
+  const labelColor = cents == null ? "text-[var(--cream-dim)]" : inTune ? "text-[var(--brass-bright)]" : "text-[var(--danger)]";
+  return (
+    <div className="w-full">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)]">FLAT</span>
+        <span className={`font-mono text-[11px] tracking-widest font-medium ${labelColor}`}>{label}</span>
+        <span className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)]">SHARP</span>
+      </div>
+      <div className="relative h-2.5 rounded-full needle-track brass-edge overflow-visible">
+        <div
+          className="absolute top-1/2 w-0.5 h-5 rounded-full transition-all duration-150 ease-out"
+          style={{
+            left: `${pct}%`, transform: "translate(-50%, -50%)",
+            background: inTune ? "var(--brass-bright)" : "var(--cream)",
+            boxShadow: inTune ? "0 0 10px 2px rgba(232,196,104,0.8)" : "0 0 6px 1px rgba(242,232,213,0.5)",
+          }}
+        />
+      </div>
+      <div className="flex justify-between mt-1">
+        <span className="font-mono text-[9px] text-[var(--cream-dim)]/60">-50¢</span>
+        <span className="font-mono text-[9px] text-[var(--cream-dim)]/60">0¢</span>
+        <span className="font-mono text-[9px] text-[var(--cream-dim)]/60">+50¢</span>
+      </div>
+    </div>
+  );
+}
+
+function KeySelector({ selectedKey, onChange }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)]">KEY</span>
+      <div className="flex rounded-lg overflow-hidden brass-edge">
+        {Object.keys(HARMONICA_TABLES).map((k) => (
+          <button
+            key={k}
+            onClick={() => onChange(k)}
+            className="key-btn font-mono text-xs font-bold px-3 py-1.5"
+            style={{
+              background: selectedKey === k ? "var(--brass-bright)" : "transparent",
+              color: selectedKey === k ? "#221805" : "var(--cream-dim)",
+            }}
+          >
+            {k}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HarmonicaBody({ table, activeHole, activeAction }) {
+  return (
+    <div className="w-full">
+      <div
+        className="relative rounded-2xl p-3 sm:p-4"
+        style={{
+          background: "linear-gradient(180deg, #3B2A1D 0%, #2A1D14 100%)",
+          boxShadow: "inset 0 2px 0 rgba(255,255,255,0.06), inset 0 -3px 8px rgba(0,0,0,0.5), 0 20px 40px -16px rgba(0,0,0,0.7)",
+          border: "1px solid rgba(200,155,60,0.25)",
+        }}
+      >
+        <div className="flex justify-between px-1 mb-2">
+          <div className="w-2 h-2 rounded-full" style={{ background: "radial-gradient(circle at 35% 30%, #DCC988, #8A6B2E)" }} />
+          <div className="font-mono text-[10px] tracking-[0.25em] text-[var(--brass-dim)] self-center">RICHTER &middot; {KEY_LABELS[Object.keys(HARMONICA_TABLES).find(k => HARMONICA_TABLES[k] === table)] || ""}</div>
+          <div className="w-2 h-2 rounded-full" style={{ background: "radial-gradient(circle at 35% 30%, #DCC988, #8A6B2E)" }} />
+        </div>
+
+        <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
+          {table.map(({ hole, blow, draw }) => {
+            const isActive = activeHole === hole;
+            const blowActive = isActive && activeAction === "blow";
+            const drawActive = isActive && activeAction === "draw";
+            return (
+              <div key={hole} className="flex flex-col items-center">
+                <span className="font-mono text-[9px] sm:text-[10px] text-[var(--brass-dim)] mb-1">{hole}</span>
+                <div
+                  className="w-full rounded-md overflow-hidden flex flex-col"
+                  style={{ aspectRatio: "1 / 3.1", background: "linear-gradient(180deg, #C7C2B8, #9C978B)", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.35), inset 0 2px 3px rgba(255,255,255,0.5)" }}
+                >
+                  <div
+                    className={`flex-1 flex items-center justify-center transition-colors duration-150 ${blowActive ? "glow-blow" : ""}`}
+                    style={{ background: blowActive ? "linear-gradient(180deg, var(--blow-dim), #4A2E1E)" : "linear-gradient(180deg, #75726A, #57544D)" }}
+                  >
+                    <span className="font-mono text-[8px] sm:text-[10px] font-bold" style={{ color: blowActive ? "var(--blow)" : "#3a3833" }}>{blow.note}</span>
+                  </div>
+                  <div className="h-px" style={{ background: "rgba(0,0,0,0.4)" }} />
+                  <div
+                    className={`flex-1 flex items-center justify-center transition-colors duration-150 ${drawActive ? "glow-draw" : ""}`}
+                    style={{ background: drawActive ? "linear-gradient(180deg, #1E4C46, var(--draw-dim))" : "linear-gradient(180deg, #57544D, #403E38)" }}
+                  >
+                    <span className="font-mono text-[8px] sm:text-[10px] font-bold" style={{ color: drawActive ? "var(--draw)" : "#242320" }}>{draw.note}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex justify-center gap-6 mt-3">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ background: "var(--blow)" }} />
+            <span className="font-mono text-[10px] tracking-wider text-[var(--cream-dim)]">BLOW</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ background: "var(--draw)" }} />
+            <span className="font-mono text-[10px] tracking-wider text-[var(--cream-dim)]">DRAW</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReferenceChart({ table, activeHole, activeAction }) {
+  return (
+    <div className="grain-panel brass-edge rounded-xl p-4 overflow-x-auto scrollbar-thin">
+      <h3 className="font-display text-base font-medium text-[var(--brass-bright)] mb-3">Tuning chart</h3>
+      <table className="chart w-full text-sm">
+        <thead>
+          <tr className="text-left text-[var(--cream-dim)] font-mono text-[10px] tracking-widest">
+            <th className="pb-2 pr-4">HOLE</th><th className="pb-2 pr-4">BLOW</th><th className="pb-2 pr-4">Hz</th><th className="pb-2 pr-4">DRAW</th><th className="pb-2">Hz</th>
+          </tr>
+        </thead>
+        <tbody>
+          {table.map(({ hole, blow, draw }) => {
+            const rowActive = activeHole === hole;
+            return (
+              <tr key={hole} className="border-t" style={{ borderColor: "rgba(200,155,60,0.12)" }}>
+                <td className="py-1.5 pr-4 font-mono text-[var(--brass)]">{hole}</td>
+                <td className="py-1.5 pr-4 font-mono" style={{ color: rowActive && activeAction === "blow" ? "var(--blow)" : "var(--cream)" }}>{blow.note}</td>
+                <td className="py-1.5 pr-4 font-mono text-[var(--cream-dim)]">{blow.freq.toFixed(2)}</td>
+                <td className="py-1.5 pr-4 font-mono" style={{ color: rowActive && activeAction === "draw" ? "var(--draw)" : "var(--cream)" }}>{draw.note}</td>
+                <td className="py-1.5 font-mono text-[var(--cream-dim)]">{draw.freq.toFixed(2)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ===========================================================
+   APP
+=========================================================== */
+function App() {
+  const [listening, setListening] = useState(false);
+  const [error, setError] = useState(null);
+  const [rawFreq, setRawFreq] = useState(null);
+  const [rawConfidence, setRawConfidence] = useState(0);
+  const [permissionState, setPermissionState] = useState("idle");
+  const [selectedKey, setSelectedKey] = useState("C");
+
+  const audioCtxRef = useRef(null);
+  const analyserRef = useRef(null);
+  const streamRef = useRef(null);
+  const rafRef = useRef(null);
+  const bufferRef = useRef(null);
+
+  const table = HARMONICA_TABLES[selectedKey];
+  const targets = useMemo(() => flattenTargets(table), [table]);
+
+  const stableFreq = useStableFrequency(rawFreq);
+  const stableConfidence = useStableConfidence(rawConfidence);
+
+  const chromatic = useMemo(() => nearestChromaticNote(stableFreq), [stableFreq]);
+  const match = useMemo(() => nearestHarmonicaTarget(stableFreq, targets), [stableFreq, targets]);
+
+  const isLocked = match && Math.abs(match.cents) <= 45 && stableFreq != null && stableConfidence >= 0.85;
+  const activeHole = isLocked ? match.hole : null;
+  const activeAction = isLocked ? match.action : null;
+
+  const tick = useCallback(() => {
+    const analyser = analyserRef.current;
+    const buffer = bufferRef.current;
+    if (analyser && buffer && audioCtxRef.current) {
+      analyser.getFloatTimeDomainData(buffer);
+      const { freq, confidence } = autocorrelate(buffer, audioCtxRef.current.sampleRate);
+      setRawFreq(freq > 0 ? freq : null);
+      setRawConfidence(freq > 0 ? confidence : 0);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  const start = async () => {
+    setError(null);
+    const diag = diagnoseEnvironment();
+
+    if (diag.inIframe) {
+      setError(
+        "This page is running inside another site's iframe (for example, an embedded preview). " +
+        "Cross-origin iframes are not granted microphone access unless the embedding page explicitly allows it, " +
+        "and this one doesn't. Open this app directly — as its own tab/page at its own https:// address — and try again."
+      );
+      return;
+    }
+    if (!diag.secure) {
+      setError("Microphone access requires a secure context (HTTPS). This page is not running over HTTPS, so the browser will not grant microphone access.");
+      return;
+    }
+    if (!diag.hasMediaDevices) {
+      setError("This browser environment does not expose navigator.mediaDevices.getUserMedia, so microphone capture is unavailable here.");
+      return;
+    }
+    if (!diag.hasAudioContext) {
+      setError("This browser environment does not expose the Web Audio API (AudioContext), so pitch analysis is unavailable here.");
+      return;
+    }
+
+    setPermissionState("requesting");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
+      streamRef.current = stream;
+
+      const AudioContextCls = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioContextCls();
+      audioCtxRef.current = audioCtx;
+      if (audioCtx.state === "suspended") await audioCtx.resume();
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+      bufferRef.current = new Float32Array(analyser.fftSize);
+
+      setPermissionState("granted");
+      setListening(true);
+      rafRef.current = requestAnimationFrame(tick);
+    } catch (err) {
+      setPermissionState("idle");
+      const name = err && err.name ? err.name : "Error";
+      const message = err && err.message ? err.message : String(err);
+      let hint = "";
+      if (name === "NotAllowedError") {
+        hint = " This usually means either you (or the browser) denied the prompt, or — if you're seeing this inside an embedded preview — the embedding context isn't allowed to request the mic at all. Open this app in its own browser tab at its https:// address.";
+      } else if (name === "NotFoundError") {
+        hint = " No microphone was found on this device.";
+      }
+      setError(`${name}: ${message}${hint}`);
+    }
+  };
+
+  const stop = () => {
+    setListening(false);
+    setPermissionState("idle");
+    setRawFreq(null);
+    setRawConfidence(0);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    if (audioCtxRef.current) { audioCtxRef.current.close().catch(() => {}); audioCtxRef.current = null; }
+    analyserRef.current = null;
+    bufferRef.current = null;
+  };
+
+  useEffect(() => () => stop(), []);
+
+  // Changing key mid-listen just changes what we compare against; no need to restart the mic.
+  const displayNote = stableFreq != null && chromatic ? `${chromatic.name}${chromatic.octave}` : "—";
+  const displayFreq = stableFreq != null ? stableFreq.toFixed(1) : "—";
+  const meterCents = stableFreq != null && match ? match.cents : (stableFreq != null && chromatic ? chromatic.cents : null);
+
+  return (
+    <div className="min-h-screen flex flex-col items-center px-4 py-8 sm:py-12">
+      <div className="w-full max-w-2xl text-center mb-8 rise-in">
+        <div className="font-mono text-[11px] tracking-[0.35em] text-[var(--brass)] mb-2">HOLE &amp; NOTE DETECTOR</div>
+        <h1 className="font-display text-4xl sm:text-5xl font-semibold text-[var(--cream)] leading-tight">Harmonica Tuner</h1>
+        <p className="text-[var(--cream-dim)] mt-2 text-sm sm:text-base max-w-md mx-auto">
+          Play a note into your microphone. We'll find the hole, the breath direction, and how in-tune you are.
+        </p>
+      </div>
+
+      <div className="w-full max-w-2xl flex flex-col gap-6">
+
+        <div className="grain-panel brass-edge rounded-xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 rise-in" style={{ animationDelay: "60ms" }}>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-3 h-3 rounded-full flex-shrink-0"
+                style={{ background: listening ? "var(--draw)" : "var(--brass-dim)", boxShadow: listening ? "0 0 10px 2px rgba(95,175,166,0.7)" : "none" }}
+              />
+              <span className="font-mono text-xs tracking-widest text-[var(--cream-dim)]">{listening ? "LISTENING" : "MICROPHONE OFF"}</span>
+            </div>
+            <KeySelector selectedKey={selectedKey} onChange={setSelectedKey} />
+          </div>
+          <button
+            onClick={listening ? stop : start}
+            disabled={permissionState === "requesting"}
+            className="font-mono font-bold text-sm tracking-widest px-6 py-3.5 rounded-lg transition-transform active:scale-[0.97] disabled:opacity-60 w-full sm:w-auto"
+            style={{
+              background: listening ? "var(--danger)" : "linear-gradient(180deg, var(--brass-bright), var(--brass))",
+              color: listening ? "#2A130D" : "#221805", border: "none",
+              boxShadow: listening ? "0 4px 14px -4px rgba(200,84,60,0.6)" : "0 4px 14px -4px rgba(200,155,60,0.6)",
+            }}
+          >
+            {permissionState === "requesting" ? "REQUESTING ACCESS…" : listening ? "■ STOP LISTENING" : "▶ START LISTENING"}
+          </button>
+        </div>
+
+        {error && (
+          <div className="rounded-xl p-4 text-sm rise-in" style={{ background: "rgba(200,84,60,0.12)", border: "1px solid rgba(200,84,60,0.4)", color: "#F0BBAE" }}>
+            <div className="font-mono text-[10px] tracking-widest mb-1.5" style={{ color: "var(--danger)" }}>MICROPHONE ERROR</div>
+            <div className="font-mono text-xs leading-relaxed break-words">{error}</div>
+          </div>
+        )}
+
+        <div className="grain-panel brass-edge rounded-xl p-5 sm:p-6 rise-in" style={{ animationDelay: "120ms" }}>
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            <div>
+              <div className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)] mb-1">FREQUENCY</div>
+              <div className="font-mono text-3xl sm:text-4xl font-medium text-[var(--cream)] tabular-nums">{displayFreq}<span className="text-base text-[var(--cream-dim)] ml-1">Hz</span></div>
+            </div>
+            <div className="text-right">
+              <div className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)] mb-1">NOTE</div>
+              <div className="font-display text-3xl sm:text-4xl font-medium text-[var(--brass-bright)]">{displayNote}</div>
+            </div>
+          </div>
+
+          <TuningMeter cents={meterCents} />
+
+          <div className="mt-4 grid grid-cols-2 gap-4">
+            <div>
+              <div className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)] mb-1">CENTS</div>
+              <div className="font-mono text-lg tabular-nums" style={{ color: meterCents == null ? "var(--cream-dim)" : Math.abs(meterCents) <= 6 ? "var(--brass-bright)" : "var(--danger)" }}>
+                {meterCents == null ? "—" : `${meterCents > 0 ? "+" : ""}${meterCents.toFixed(1)}¢`}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)] mb-1">CONFIDENCE</div>
+              <div className="font-mono text-lg tabular-nums text-[var(--cream)]">{listening ? `${Math.round(stableConfidence * 100)}%` : "—"}</div>
+            </div>
+          </div>
+
+          <div className="mt-5 pt-5 flex items-center justify-between" style={{ borderTop: "1px solid rgba(200,155,60,0.15)" }}>
+            <div>
+              <div className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)] mb-1">HOLE</div>
+              <div className="font-display text-2xl font-medium text-[var(--cream)]">{isLocked ? activeHole : "—"}</div>
+            </div>
+            <div className="text-right">
+              <div className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)] mb-1">ACTION</div>
+              <div className="font-display text-2xl font-medium uppercase" style={{ color: isLocked ? (activeAction === "blow" ? "var(--blow)" : "var(--draw)") : "var(--cream)" }}>
+                {isLocked ? activeAction : "—"}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rise-in" style={{ animationDelay: "180ms" }}>
+          <HarmonicaBody table={table} activeHole={activeHole} activeAction={activeAction} />
+        </div>
+
+        <div className="rise-in" style={{ animationDelay: "240ms" }}>
+          <ReferenceChart table={table} activeHole={activeHole} activeAction={activeAction} />
+        </div>
+
+        <p className="text-center text-[var(--cream-dim)]/60 text-xs pb-4">
+          Best in a quiet room, holding the harmonica close to the microphone. Tuning tolerance shown is &plusmn;50 cents.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

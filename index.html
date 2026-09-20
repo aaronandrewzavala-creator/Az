@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
 <title>Harmonica Tuner</title>
 
-<!-- PWA / iOS home-screen metadata -->
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#17110D" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -32,11 +31,20 @@
     --brass-dim: #7A6236;
     --cream: #F2E8D5;
     --cream-dim: #B8AB93;
-    --blow: #E8935B;
-    --blow-dim: #7A4E32;
-    --draw: #5FAFA6;
-    --draw-dim: #345A54;
+
+    /* HIGH-CONTRAST BREATH COLORS */
+    --blow: #2BE06B;          /* vibrant green */
+    --blow-soft: #8CFFBA;
+    --blow-deep: #0B4A26;
+    --draw: #37A8FF;          /* bright blue */
+    --draw-soft: #9ED6FF;
+    --draw-deep: #0A3558;
+
+    --bend: #FFA23D;          /* amber: bend state */
+    --bend-deep: #5A3210;
+    --chord: #C89BFF;         /* violet: chord / cluster */
     --danger: #C8543C;
+
     box-sizing: border-box;
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -63,18 +71,29 @@
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), inset 0 0 0 1px rgba(0,0,0,0.3), 0 12px 30px -10px rgba(0,0,0,0.6);
   }
   @keyframes reedGlowBlow {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(232,147,91,0.0), inset 0 0 14px 2px rgba(232,147,91,0.15); }
-    50% { box-shadow: 0 0 22px 4px rgba(232,147,91,0.55), inset 0 0 18px 4px rgba(232,147,91,0.35); }
+    0%, 100% { box-shadow: inset 0 0 14px 2px rgba(43,224,107,0.25); }
+    50% { box-shadow: 0 0 26px 5px rgba(43,224,107,0.75), inset 0 0 20px 5px rgba(43,224,107,0.5); }
   }
   @keyframes reedGlowDraw {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(95,175,166,0.0), inset 0 0 14px 2px rgba(95,175,166,0.15); }
-    50% { box-shadow: 0 0 22px 4px rgba(95,175,166,0.55), inset 0 0 18px 4px rgba(95,175,166,0.35); }
+    0%, 100% { box-shadow: inset 0 0 14px 2px rgba(55,168,255,0.25); }
+    50% { box-shadow: 0 0 26px 5px rgba(55,168,255,0.75), inset 0 0 20px 5px rgba(55,168,255,0.5); }
   }
-  .glow-blow { animation: reedGlowBlow 0.9s ease-in-out infinite; }
-  .glow-draw { animation: reedGlowDraw 0.9s ease-in-out infinite; }
+  @keyframes reedGlowBend {
+    0%, 100% { box-shadow: inset 0 0 14px 2px rgba(255,162,61,0.3); }
+    50% { box-shadow: 0 0 26px 5px rgba(255,162,61,0.8), inset 0 0 20px 5px rgba(255,162,61,0.55); }
+  }
+  .glow-blow { animation: reedGlowBlow 0.85s ease-in-out infinite; }
+  .glow-draw { animation: reedGlowDraw 0.85s ease-in-out infinite; }
+  .glow-bend { animation: reedGlowBend 0.55s ease-in-out infinite; }
   @keyframes riseIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   .rise-in { animation: riseIn 0.5s ease-out both; }
-  @media (prefers-reduced-motion: reduce) { .glow-blow, .glow-draw, .rise-in { animation: none !important; } }
+  @keyframes badgePop { from { transform: scale(0.94); opacity: 0.4; } to { transform: scale(1); opacity: 1; } }
+  .badge-pop { animation: badgePop 0.18s ease-out both; }
+  @keyframes bobDown { 0%,100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
+  .bob-down { animation: bobDown 0.7s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .glow-blow, .glow-draw, .glow-bend, .rise-in, .badge-pop, .bob-down { animation: none !important; }
+  }
   .needle-track {
     background: linear-gradient(90deg,
       var(--danger) 0%, var(--danger) 8%,
@@ -94,13 +113,9 @@
 <div id="root"></div>
 
 <script>
-  // Register the service worker for offline app-shell + installability.
-  // No-ops harmlessly if served from a context that disallows it.
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("service-worker.js").catch(() => {
-        /* offline shell just won't be available; the live app still works */
-      });
+      navigator.serviceWorker.register("service-worker.js").catch(() => {});
     });
   }
 </script>
@@ -110,8 +125,6 @@ const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
 /* ===========================================================
    CONFIG — harmonica note tables, keyed by musical key.
-   Adding a new key later is just adding another entry here;
-   nothing else in the app needs to change.
 =========================================================== */
 const HARMONICA_TABLES = {
   C: [
@@ -126,8 +139,6 @@ const HARMONICA_TABLES = {
     { hole: 9,  blow: { note: "G6", freq: 1567.98 }, draw: { note: "F6", freq: 1396.91 } },
     { hole: 10, blow: { note: "C7", freq: 2093.00 }, draw: { note: "A6", freq: 1760.00 } },
   ],
-  // G harmonica = C table transposed down a perfect fourth (-5 semitones),
-  // which is how G Richter-tuned harps are actually pitched relative to C.
   G: [
     { hole: 1,  blow: { note: "G3", freq: 196.00 }, draw: { note: "A3", freq: 220.00 } },
     { hole: 2,  blow: { note: "B3", freq: 246.94 }, draw: { note: "D4", freq: 293.66 } },
@@ -144,6 +155,15 @@ const HARMONICA_TABLES = {
 
 const KEY_LABELS = { C: "Key of C", G: "Key of G" };
 
+/* Bendable reeds on a Richter diatonic, and how many semitones
+   each will pull down before the reed chokes. Identical geometry
+   for every key — that's why this is keyed by hole, not by note. */
+const BEND_RANGES = {
+  draw: { 1: 1, 2: 2, 3: 3, 4: 1, 6: 1 },
+  blow: { 8: 1, 9: 1, 10: 2 },
+};
+const STEP_LABELS = ["—", "\u00BD step", "1 step", "1\u00BD steps"];
+
 function flattenTargets(table) {
   return table.flatMap(h => ([
     { hole: h.hole, action: "blow", note: h.blow.note, freq: h.blow.freq },
@@ -159,35 +179,22 @@ const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 function centsBetween(freqA, freqB) {
   return 1200 * Math.log2(freqA / freqB);
 }
-
+function freqToMidi(freq) {
+  return 69 + 12 * Math.log2(freq / 440);
+}
 function nearestChromaticNote(freq) {
   if (!freq || freq <= 0) return null;
-  const midi = 69 + 12 * Math.log2(freq / 440);
+  const midi = freqToMidi(freq);
   const rounded = Math.round(midi);
   const exactFreq = 440 * Math.pow(2, (rounded - 69) / 12);
   const cents = centsBetween(freq, exactFreq);
   const name = NOTE_NAMES[((rounded % 12) + 12) % 12];
   const octave = Math.floor(rounded / 12) - 1;
-  return { name, octave, cents, exactFreq };
+  return { name, octave, cents, exactFreq, midi: rounded };
 }
 
 /* ===========================================================
-   HARMONICA LOGIC
-   nearestHarmonicaTarget: closest hole/action for a raw frequency,
-   given the currently selected key's target list.
-
-   detectBend(): EXTENSION SEAM, not yet implemented.
-   Bending flattens a reed's pitch below its natural target (draw
-   bends on holes 1-6, blow bends on holes 7-10, overblow/overdraw
-   elsewhere). To add it: once a stable frequency sits more than
-   ~35 cents flat of its nearest target AND is closer to that
-   target than to any *other* target a half-step below it, treat
-   it as a bend of that reed rather than "out of tune", and report
-   how many cents/semitones below the natural note it is. That
-   needs its own confidence gate (bent notes are quieter and have
-   more overtone noise than straight notes), which is why it isn't
-   folded into nearestHarmonicaTarget's plain nearest-neighbor
-   search today.
+   HARMONICA MATCHING
 =========================================================== */
 function nearestHarmonicaTarget(freq, targets) {
   if (!freq || freq <= 0) return null;
@@ -196,23 +203,78 @@ function nearestHarmonicaTarget(freq, targets) {
   for (const t of targets) {
     const cents = centsBetween(freq, t.freq);
     const abs = Math.abs(cents);
-    if (abs < bestAbsCents) {
-      bestAbsCents = abs;
-      best = { ...t, cents };
-    }
+    if (abs < bestAbsCents) { bestAbsCents = abs; best = Object.assign({}, t, { cents }); }
   }
   return best;
 }
 
-// Stub kept intentionally inert (always returns null) — see comment above.
-// eslint-disable-next-line no-unused-vars
-function detectBend(stableFreq, targets) {
-  return null;
+/* ===========================================================
+   BEND ENGINE  —  detectBend()
+
+   A bend is a reed pulled FLAT of its natural pitch. It is only
+   physically possible on the reeds listed in BEND_RANGES:
+   draw 1-4 and 6, blow 8-10.
+
+   Rules used here:
+     1. If the pitch is sitting within 20 cents of ANY natural
+        reed, it isn't a bend — it's just that note. Bail out.
+     2. Otherwise look only at bendable reeds, measure how many
+        cents FLAT the pitch is of each one, and keep candidates
+        that are at least 40 cents flat but no more than the
+        reed's full range (+30 cents of slack for reeds that
+        over-pull slightly before choking).
+     3. Of those, take the SHALLOWEST — i.e. the reed directly
+        above the pitch is the one actually being bent, not some
+        distant reed further up the harp.
+
+   Returns the natural note, the bent note, exact cents of
+   deviation, semitone depth, and a 0-1 progress value through
+   the reed's full bend range for the visual gauge.
+=========================================================== */
+function detectBend(freq, table, targets) {
+  if (!freq || freq <= 0) return null;
+
+  const natural = nearestHarmonicaTarget(freq, targets);
+  if (natural && Math.abs(natural.cents) <= 20) return null;
+
+  let best = null;
+  for (const row of table) {
+    for (const action of ["draw", "blow"]) {
+      const max = BEND_RANGES[action][row.hole];
+      if (!max) continue;
+      const reed = row[action];
+      const centsFlat = -centsBetween(freq, reed.freq);   // positive = flat
+      if (centsFlat < 40) continue;
+      if (centsFlat > max * 100 + 30) continue;
+      if (!best || centsFlat < best.centsFlat) {
+        best = { hole: row.hole, action, reed, centsFlat, max };
+      }
+    }
+  }
+  if (!best) return null;
+
+  const semitones = best.centsFlat / 100;
+  const nearestStop = Math.max(1, Math.min(best.max, Math.round(semitones)));
+  const chrom = nearestChromaticNote(freq);
+
+  return {
+    hole: best.hole,
+    action: best.action,
+    naturalNote: best.reed.note,
+    naturalFreq: best.reed.freq,
+    bentNote: chrom ? chrom.name + chrom.octave : "\u2014",
+    centsFlat: best.centsFlat,
+    semitones,
+    maxSemitones: best.max,
+    nearestStop,
+    stepLabel: STEP_LABELS[nearestStop] || nearestStop / 2 + " steps",
+    progress: Math.max(0, Math.min(1, semitones / best.max)),
+    onStop: Math.abs(semitones - nearestStop) < 0.15,
+  };
 }
 
 /* ===========================================================
-   PITCH ENGINE — autocorrelation with parabolic interpolation
-   and a normalized-correlation confidence score.
+   MONOPHONIC PITCH ENGINE — autocorrelation
 =========================================================== */
 function autocorrelate(buffer, sampleRate) {
   const SIZE = buffer.length;
@@ -225,12 +287,8 @@ function autocorrelate(buffer, sampleRate) {
 
   let r1 = 0, r2 = SIZE - 1;
   const threshold = 0.2;
-  for (let i = 0; i < SIZE / 2; i++) {
-    if (Math.abs(buffer[i]) > threshold) { r1 = i; break; }
-  }
-  for (let i = 1; i < SIZE / 2; i++) {
-    if (Math.abs(buffer[SIZE - i]) > threshold) { r2 = SIZE - i; break; }
-  }
+  for (let i = 0; i < SIZE / 2; i++) { if (Math.abs(buffer[i]) > threshold) { r1 = i; break; } }
+  for (let i = 1; i < SIZE / 2; i++) { if (Math.abs(buffer[SIZE - i]) > threshold) { r2 = SIZE - i; break; } }
   const trimmed = buffer.slice(r1, r2);
   const n = trimmed.length;
   if (n < 512) return NO_MATCH;
@@ -246,9 +304,7 @@ function autocorrelate(buffer, sampleRate) {
   while (d < n - 1 && c[d] > c[d + 1]) d++;
 
   let maxVal = -1, maxPos = -1;
-  for (let i = d; i < n; i++) {
-    if (c[i] > maxVal) { maxVal = c[i]; maxPos = i; }
-  }
+  for (let i = d; i < n; i++) { if (c[i] > maxVal) { maxVal = c[i]; maxPos = i; } }
   if (maxPos <= 0) return NO_MATCH;
 
   const confidence = c[0] > 0 ? Math.max(0, Math.min(1, maxVal / c[0])) : 0;
@@ -266,6 +322,137 @@ function autocorrelate(buffer, sampleRate) {
   return { freq, confidence };
 }
 
+/* ===========================================================
+   POLYPHONIC / CHORD ENGINE
+
+   Autocorrelation can only ever report ONE pitch, so chords need
+   a separate path: an FFT, peak-picking on the spectrum, harmonic
+   culling to reduce those peaks to plausible fundamentals, and
+   then a match of each fundamental back onto the harp's reeds.
+=========================================================== */
+function findSpectralPeaks(freqData, sampleRate, fftSize) {
+  const binHz = sampleRate / fftSize;
+  const n = freqData.length;
+
+  let maxDb = -Infinity;
+  for (let i = 0; i < n; i++) if (freqData[i] > maxDb) maxDb = freqData[i];
+  if (maxDb < -62) return [];                  // room tone / silence
+
+  const floorDb = Math.max(-78, maxDb - 20);   // only peaks near the loudest
+  const minBin = Math.max(2, Math.floor(150 / binHz));
+  const maxBin = Math.min(n - 2, Math.ceil(2600 / binHz));
+
+  const peaks = [];
+  for (let i = minBin; i <= maxBin; i++) {
+    const v = freqData[i];
+    if (v < floorDb) continue;
+    if (v <= freqData[i - 1] || v < freqData[i + 1]) continue;
+    const a = freqData[i - 1], b = v, c = freqData[i + 1];
+    const denom = a - 2 * b + c;
+    const delta = denom !== 0 ? (0.5 * (a - c)) / denom : 0;
+    peaks.push({ freq: (i + delta) * binHz, db: v });
+  }
+  peaks.sort((x, y) => y.db - x.db);
+  return peaks.slice(0, 14);
+}
+
+function extractFundamentals(peaks) {
+  const funds = [];
+  for (const p of peaks) {
+    let skip = false;
+    for (const f of funds) {
+      if (Math.abs(centsBetween(p.freq, f.freq)) < 45) { skip = true; break; }
+      const ratio = p.freq / f.freq;
+      const k = Math.round(ratio);
+      if (k >= 2 && k <= 8 && Math.abs(ratio - k) < 0.035 * k) { skip = true; break; }
+    }
+    if (!skip) funds.push(p);
+    if (funds.length >= 5) break;
+  }
+  return funds.sort((a, b) => a.freq - b.freq);
+}
+
+const CHORD_TEMPLATES = [
+  { iv: [0, 4, 7],      name: "Major Triad" },
+  { iv: [0, 3, 7],      name: "Minor Triad" },
+  { iv: [0, 3, 6],      name: "Diminished Triad" },
+  { iv: [0, 4, 8],      name: "Augmented Triad" },
+  { iv: [0, 5, 7],      name: "Sus4" },
+  { iv: [0, 2, 7],      name: "Sus2" },
+  { iv: [0, 4, 7, 10],  name: "Dominant 7th" },
+  { iv: [0, 4, 7, 11],  name: "Major 7th" },
+  { iv: [0, 3, 7, 10],  name: "Minor 7th" },
+  { iv: [0, 3, 6, 10],  name: "Half-Diminished 7th" },
+  { iv: [0, 2, 4, 7],   name: "Major add9" },
+  { iv: [0, 5, 7, 10],  name: "7sus4" },
+  { iv: [0, 7],         name: "Perfect 5th" },
+  { iv: [0, 5],         name: "Perfect 4th" },
+  { iv: [0, 4],         name: "Major 3rd" },
+  { iv: [0, 3],         name: "Minor 3rd" },
+  { iv: [0, 2],         name: "Major 2nd" },
+];
+
+function nameChord(freqs) {
+  const pcs = Array.from(new Set(freqs.map(f => {
+    const m = Math.round(freqToMidi(f));
+    return ((m % 12) + 12) % 12;
+  }))).sort((a, b) => a - b);
+  if (pcs.length < 2) return null;
+
+  for (const root of pcs) {
+    const iv = pcs.map(p => (((p - root) % 12) + 12) % 12).sort((a, b) => a - b);
+    for (const t of CHORD_TEMPLATES) {
+      if (t.iv.length === iv.length && t.iv.every((v, i) => v === iv[i])) {
+        return NOTE_NAMES[root] + " " + t.name;
+      }
+    }
+  }
+  return pcs.map(p => NOTE_NAMES[p]).join(" + ") + " cluster";
+}
+
+/* Map each detected fundamental back onto the harp. A frequency
+   can legitimately match two reeds (hole 2 draw and hole 3 blow
+   are the same pitch on a C harp) — both get lit, which is the
+   honest answer since the audio alone cannot distinguish them. */
+function matchChordToHoles(fundamentals, targets) {
+  // Pass 1: every reed within 40 cents of each fundamental.
+  const cand = fundamentals.map(f => ({
+    freq: f.freq,
+    reeds: targets.filter(t => Math.abs(centsBetween(f.freq, t.freq)) <= 40),
+  })).filter(c => c.reeds.length > 0);
+
+  // Pass 2: unambiguous fundamentals vote on a breath direction,
+  // then ambiguous ones (hole 2 draw and hole 3 blow are the same
+  // pitch on a C harp) are resolved in favour of the majority.
+  let blowVotes = 0, drawVotes = 0;
+  for (const c of cand) {
+    if (c.reeds.length === 1) {
+      if (c.reeds[0].action === "blow") blowVotes++; else drawVotes++;
+    }
+  }
+  const preferred = blowVotes === drawVotes ? null : (blowVotes > drawVotes ? "blow" : "draw");
+
+  const holes = [];
+  const seen = new Set();
+  const notes = [];
+  for (const c of cand) {
+    let reeds = c.reeds;
+    if (reeds.length > 1 && preferred) {
+      const filtered = reeds.filter(r => r.action === preferred);
+      if (filtered.length > 0) reeds = filtered;
+    }
+    for (const t of reeds) {
+      const key = t.hole + "-" + t.action;
+      if (!seen.has(key)) { seen.add(key); holes.push({ hole: t.hole, action: t.action, note: t.note }); }
+    }
+    notes.push(c.freq);
+  }
+  return { holes, notes };
+}
+
+/* ===========================================================
+   SMOOTHING
+=========================================================== */
 function useStableFrequency(rawFreq, historyLen = 6) {
   const historyRef = useRef([]);
   const [stable, setStable] = useState(null);
@@ -274,7 +461,7 @@ function useStableFrequency(rawFreq, historyLen = 6) {
     const hist = historyRef.current;
     hist.push(rawFreq);
     if (hist.length > historyLen) hist.shift();
-    const sorted = [...hist].sort((a, b) => a - b);
+    const sorted = hist.slice().sort((a, b) => a - b);
     setStable(sorted[Math.floor(sorted.length / 2)]);
   }, [rawFreq]);
   return stable;
@@ -295,9 +482,6 @@ function useStableConfidence(rawConfidence, historyLen = 6) {
 
 /* ===========================================================
    ENVIRONMENT DETECTION
-   Distinguish "the platform won't allow this context to use the
-   mic at all" from an ordinary user-declined prompt, so the
-   message people see actually tells them what to do.
 =========================================================== */
 function diagnoseEnvironment() {
   const inIframe = window.top !== window.self;
@@ -310,34 +494,195 @@ function diagnoseEnvironment() {
 /* ===========================================================
    UI PIECES
 =========================================================== */
+/* Literal hex (not var()) so alpha suffixes can be concatenated
+   onto them for borders and shadows. Keep in sync with :root. */
+const ACTION_COLOR = {
+  blow: { main: "#2BE06B", soft: "#8CFFBA", deep: "#0B4A26", ink: "#04220F" },
+  draw: { main: "#37A8FF", soft: "#9ED6FF", deep: "#0A3558", ink: "#031B2E" },
+};
+
+function ActionBadge({ action, hole, bending }) {
+  if (!action) {
+    return (
+      <div className="w-full rounded-2xl flex items-center justify-center py-7 brass-edge"
+           style={{ background: "rgba(0,0,0,0.25)" }}>
+        <span className="font-mono text-sm tracking-[0.3em] text-[var(--cream-dim)]/60">AWAITING A NOTE</span>
+      </div>
+    );
+  }
+  const c = ACTION_COLOR[action];
+  const label = action.toUpperCase();
+  return (
+    <div key={action + "-" + hole} className="badge-pop w-full rounded-2xl flex items-center justify-between px-6 py-5"
+      style={{
+        background: "linear-gradient(135deg, " + c.deep + ", rgba(0,0,0,0.35))",
+        border: "2px solid " + c.main,
+        boxShadow: "0 0 34px -6px " + c.main + ", inset 0 0 26px -8px " + c.main,
+      }}>
+      <div className="flex flex-col">
+        <span className="font-mono text-[10px] tracking-[0.35em]" style={{ color: c.soft, opacity: 0.8 }}>BREATH</span>
+        <span className="font-display font-bold leading-none tracking-tight"
+              style={{ color: c.main, fontSize: "clamp(2.6rem, 13vw, 4rem)", textShadow: "0 0 22px " + c.main + "66" }}>
+          {label}
+        </span>
+        {bending && (
+          <span className="font-mono text-[11px] tracking-[0.25em] mt-1" style={{ color: "var(--bend)" }}>
+            &#9662; BENDING
+          </span>
+        )}
+      </div>
+      <div className="flex flex-col items-center justify-center rounded-xl px-5 py-3"
+           style={{ background: "rgba(0,0,0,0.35)", border: "1px solid " + c.main + "66" }}>
+        <span className="font-mono text-[10px] tracking-[0.3em]" style={{ color: c.soft, opacity: 0.75 }}>HOLE</span>
+        <span className="font-display font-bold leading-none" style={{ color: "var(--cream)", fontSize: "clamp(2.2rem, 10vw, 3.2rem)" }}>
+          {hole}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function TuningMeter({ cents }) {
   const clamped = cents == null ? 0 : Math.max(-50, Math.min(50, cents));
   const pct = 50 + (clamped / 50) * 50;
   const inTune = cents != null && Math.abs(cents) <= 6;
-  const label = cents == null ? "—" : (cents > 6 ? "SHARP" : cents < -6 ? "FLAT" : "IN TUNE");
+  const label = cents == null ? "\u2014" : (cents > 6 ? "SHARP" : cents < -6 ? "FLAT" : "IN TUNE");
   const labelColor = cents == null ? "text-[var(--cream-dim)]" : inTune ? "text-[var(--brass-bright)]" : "text-[var(--danger)]";
   return (
     <div className="w-full">
       <div className="flex items-center justify-between mb-1.5">
         <span className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)]">FLAT</span>
-        <span className={`font-mono text-[11px] tracking-widest font-medium ${labelColor}`}>{label}</span>
+        <span className={"font-mono text-[11px] tracking-widest font-medium " + labelColor}>{label}</span>
         <span className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)]">SHARP</span>
       </div>
       <div className="relative h-2.5 rounded-full needle-track brass-edge overflow-visible">
-        <div
-          className="absolute top-1/2 w-0.5 h-5 rounded-full transition-all duration-150 ease-out"
+        <div className="absolute top-1/2 w-0.5 h-5 rounded-full transition-all duration-150 ease-out"
           style={{
-            left: `${pct}%`, transform: "translate(-50%, -50%)",
+            left: pct + "%", transform: "translate(-50%, -50%)",
             background: inTune ? "var(--brass-bright)" : "var(--cream)",
             boxShadow: inTune ? "0 0 10px 2px rgba(232,196,104,0.8)" : "0 0 6px 1px rgba(242,232,213,0.5)",
-          }}
-        />
+          }} />
       </div>
       <div className="flex justify-between mt-1">
-        <span className="font-mono text-[9px] text-[var(--cream-dim)]/60">-50¢</span>
-        <span className="font-mono text-[9px] text-[var(--cream-dim)]/60">0¢</span>
-        <span className="font-mono text-[9px] text-[var(--cream-dim)]/60">+50¢</span>
+        <span className="font-mono text-[9px] text-[var(--cream-dim)]/60">-50&cent;</span>
+        <span className="font-mono text-[9px] text-[var(--cream-dim)]/60">0&cent;</span>
+        <span className="font-mono text-[9px] text-[var(--cream-dim)]/60">+50&cent;</span>
       </div>
+    </div>
+  );
+}
+
+/* Vertical dip gauge: the fill grows DOWNWARD as the reed is
+   pulled flatter, with a tick at every semitone stop the reed
+   can actually reach. */
+function BendMeter({ bend }) {
+  const active = !!bend;
+  const pct = active ? bend.progress * 100 : 0;
+  const max = active ? bend.maxSemitones : 1;
+  const stops = [];
+  for (let s = 1; s <= max; s++) stops.push({ s, pos: (s / max) * 100 });
+
+  return (
+    <div className="grain-panel rounded-xl p-4"
+         style={{ border: active ? "1px solid rgba(255,162,61,0.55)" : "1px solid rgba(200,155,60,0.18)" }}>
+      <div className="flex items-center justify-between mb-3">
+        <span className="font-mono text-[10px] tracking-[0.3em]" style={{ color: active ? "var(--bend)" : "var(--cream-dim)" }}>
+          BEND DEPTH
+        </span>
+        <span className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)]/70">
+          {active ? "MAX " + STEP_LABELS[max] : "IDLE"}
+        </span>
+      </div>
+
+      <div className="flex gap-4">
+        {/* the dipping gauge */}
+        <div className="relative rounded-lg overflow-hidden flex-shrink-0"
+             style={{ width: "46px", height: "132px", background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,162,61,0.25)" }}>
+          <div className="absolute left-0 right-0 top-0 transition-all duration-100 ease-out"
+               style={{
+                 height: pct + "%",
+                 background: "linear-gradient(180deg, rgba(255,162,61,0.35), var(--bend))",
+                 boxShadow: active ? "0 0 18px 2px rgba(255,162,61,0.55)" : "none",
+               }} />
+          {stops.map(({ s, pos }) => (
+            <div key={s} className="absolute left-0 right-0 flex items-center" style={{ top: pos + "%" }}>
+              <div className="h-px w-full" style={{ background: "rgba(242,232,213,0.45)" }} />
+              <span className="absolute -right-0.5 font-mono text-[8px] px-0.5"
+                    style={{ color: "var(--cream)", background: "rgba(0,0,0,0.5)", transform: "translateY(-50%)" }}>
+                {s === 1 ? "\u00BD" : s === 2 ? "1" : "1\u00BD"}
+              </span>
+            </div>
+          ))}
+          {active && (
+            <div className="absolute left-1/2 bob-down" style={{ top: "calc(" + pct + "% - 10px)", transform: "translateX(-50%)" }}>
+              <span className="font-mono text-lg leading-none" style={{ color: "var(--cream)", textShadow: "0 0 8px rgba(0,0,0,0.9)" }}>&#9660;</span>
+            </div>
+          )}
+        </div>
+
+        {/* readouts */}
+        <div className="flex-1 flex flex-col justify-center gap-2">
+          <div>
+            <div className="font-mono text-[9px] tracking-widest text-[var(--cream-dim)]">PULLED FLAT</div>
+            <div className="font-mono text-2xl tabular-nums leading-tight"
+                 style={{ color: active ? "var(--bend)" : "var(--cream-dim)" }}>
+              {active ? "\u2212" + bend.centsFlat.toFixed(0) + "\u00A2" : "\u2014"}
+            </div>
+          </div>
+          <div>
+            <div className="font-mono text-[9px] tracking-widest text-[var(--cream-dim)]">TARGET</div>
+            <div className="font-mono text-sm" style={{ color: active ? "var(--cream)" : "var(--cream-dim)" }}>
+              {active
+                ? bend.naturalNote + " \u2192 " + bend.bentNote + "  (" + bend.stepLabel + ")"
+                : "draw 1-4, 6 \u00B7 blow 8-10"}
+            </div>
+          </div>
+          {active && (
+            <div className="font-mono text-[10px] tracking-widest"
+                 style={{ color: bend.onStop ? "var(--blow)" : "var(--cream-dim)" }}>
+              {bend.onStop ? "\u25CF ON PITCH" : "\u25CB KEEP PULLING"}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChordPanel({ chord }) {
+  const active = chord && chord.holes.length >= 2;
+  return (
+    <div className="rounded-xl p-4 transition-colors duration-200"
+         style={{
+           background: active ? "linear-gradient(135deg, rgba(200,155,255,0.14), rgba(0,0,0,0.25))" : "rgba(0,0,0,0.22)",
+           border: active ? "1px solid rgba(200,155,255,0.5)" : "1px solid rgba(200,155,60,0.18)",
+         }}>
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[10px] tracking-[0.3em]" style={{ color: active ? "var(--chord)" : "var(--cream-dim)" }}>
+          CHORD / CLUSTER
+        </span>
+        <span className="font-mono text-[10px] text-[var(--cream-dim)]/70">
+          {active ? chord.holes.length + " REEDS" : "single note"}
+        </span>
+      </div>
+      <div className="font-display text-2xl sm:text-3xl font-semibold mt-1.5"
+           style={{ color: active ? "var(--chord)" : "var(--cream-dim)" }}>
+        {active ? (chord.name || "Cluster") : "\u2014"}
+      </div>
+      {active && (
+        <div className="flex flex-wrap gap-1.5 mt-2.5">
+          {chord.holes.map(h => (
+            <span key={h.hole + "-" + h.action} className="font-mono text-[10px] px-2 py-1 rounded"
+              style={{
+                background: "rgba(0,0,0,0.35)",
+                color: ACTION_COLOR[h.action].main,
+                border: "1px solid " + ACTION_COLOR[h.action].main + "55",
+              }}>
+              {h.hole}{h.action === "blow" ? "\u2191" : "\u2193"} {h.note}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -348,15 +693,11 @@ function KeySelector({ selectedKey, onChange }) {
       <span className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)]">KEY</span>
       <div className="flex rounded-lg overflow-hidden brass-edge">
         {Object.keys(HARMONICA_TABLES).map((k) => (
-          <button
-            key={k}
-            onClick={() => onChange(k)}
-            className="key-btn font-mono text-xs font-bold px-3 py-1.5"
+          <button key={k} onClick={() => onChange(k)} className="key-btn font-mono text-xs font-bold px-3 py-1.5"
             style={{
               background: selectedKey === k ? "var(--brass-bright)" : "transparent",
               color: selectedKey === k ? "#221805" : "var(--cream-dim)",
-            }}
-          >
+            }}>
             {k}
           </button>
         ))}
@@ -365,47 +706,59 @@ function KeySelector({ selectedKey, onChange }) {
   );
 }
 
-function HarmonicaBody({ table, activeHole, activeAction }) {
+/* activeMap: { "4-draw": { bend: true|false } }  — any number of
+   entries, so chords light every reed at once. */
+function HarmonicaBody({ table, tableKey, activeMap }) {
   return (
     <div className="w-full">
-      <div
-        className="relative rounded-2xl p-3 sm:p-4"
+      <div className="relative rounded-2xl p-3 sm:p-4"
         style={{
           background: "linear-gradient(180deg, #3B2A1D 0%, #2A1D14 100%)",
           boxShadow: "inset 0 2px 0 rgba(255,255,255,0.06), inset 0 -3px 8px rgba(0,0,0,0.5), 0 20px 40px -16px rgba(0,0,0,0.7)",
           border: "1px solid rgba(200,155,60,0.25)",
-        }}
-      >
+        }}>
         <div className="flex justify-between px-1 mb-2">
           <div className="w-2 h-2 rounded-full" style={{ background: "radial-gradient(circle at 35% 30%, #DCC988, #8A6B2E)" }} />
-          <div className="font-mono text-[10px] tracking-[0.25em] text-[var(--brass-dim)] self-center">RICHTER &middot; {KEY_LABELS[Object.keys(HARMONICA_TABLES).find(k => HARMONICA_TABLES[k] === table)] || ""}</div>
+          <div className="font-mono text-[10px] tracking-[0.25em] text-[var(--brass-dim)] self-center">RICHTER &middot; {KEY_LABELS[tableKey]}</div>
           <div className="w-2 h-2 rounded-full" style={{ background: "radial-gradient(circle at 35% 30%, #DCC988, #8A6B2E)" }} />
         </div>
 
         <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
           {table.map(({ hole, blow, draw }) => {
-            const isActive = activeHole === hole;
-            const blowActive = isActive && activeAction === "blow";
-            const drawActive = isActive && activeAction === "draw";
+            const blowState = activeMap["" + hole + "-blow"];
+            const drawState = activeMap["" + hole + "-draw"];
+            const blowActive = !!blowState;
+            const drawActive = !!drawState;
+            const blowBend = blowActive && blowState.bend;
+            const drawBend = drawActive && drawState.bend;
             return (
               <div key={hole} className="flex flex-col items-center">
-                <span className="font-mono text-[9px] sm:text-[10px] text-[var(--brass-dim)] mb-1">{hole}</span>
-                <div
-                  className="w-full rounded-md overflow-hidden flex flex-col"
-                  style={{ aspectRatio: "1 / 3.1", background: "linear-gradient(180deg, #C7C2B8, #9C978B)", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.35), inset 0 2px 3px rgba(255,255,255,0.5)" }}
-                >
-                  <div
-                    className={`flex-1 flex items-center justify-center transition-colors duration-150 ${blowActive ? "glow-blow" : ""}`}
-                    style={{ background: blowActive ? "linear-gradient(180deg, var(--blow-dim), #4A2E1E)" : "linear-gradient(180deg, #75726A, #57544D)" }}
-                  >
-                    <span className="font-mono text-[8px] sm:text-[10px] font-bold" style={{ color: blowActive ? "var(--blow)" : "#3a3833" }}>{blow.note}</span>
+                <span className="font-mono text-[9px] sm:text-[10px] mb-1"
+                      style={{ color: (blowActive || drawActive) ? "var(--cream)" : "var(--brass-dim)" }}>{hole}</span>
+                <div className="w-full rounded-md overflow-hidden flex flex-col"
+                  style={{ aspectRatio: "1 / 3.1", background: "linear-gradient(180deg, #C7C2B8, #9C978B)", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.35), inset 0 2px 3px rgba(255,255,255,0.5)" }}>
+                  <div className={"flex-1 flex items-center justify-center transition-colors duration-100 " + (blowBend ? "glow-bend" : blowActive ? "glow-blow" : "")}
+                    style={{
+                      background: blowBend
+                        ? "linear-gradient(180deg, var(--bend), var(--bend-deep))"
+                        : blowActive
+                          ? "linear-gradient(180deg, var(--blow), var(--blow-deep))"
+                          : "linear-gradient(180deg, #75726A, #57544D)",
+                    }}>
+                    <span className="font-mono text-[8px] sm:text-[10px] font-bold"
+                          style={{ color: blowActive ? "#04220F" : "#3a3833" }}>{blow.note}</span>
                   </div>
                   <div className="h-px" style={{ background: "rgba(0,0,0,0.4)" }} />
-                  <div
-                    className={`flex-1 flex items-center justify-center transition-colors duration-150 ${drawActive ? "glow-draw" : ""}`}
-                    style={{ background: drawActive ? "linear-gradient(180deg, #1E4C46, var(--draw-dim))" : "linear-gradient(180deg, #57544D, #403E38)" }}
-                  >
-                    <span className="font-mono text-[8px] sm:text-[10px] font-bold" style={{ color: drawActive ? "var(--draw)" : "#242320" }}>{draw.note}</span>
+                  <div className={"flex-1 flex items-center justify-center transition-colors duration-100 " + (drawBend ? "glow-bend" : drawActive ? "glow-draw" : "")}
+                    style={{
+                      background: drawBend
+                        ? "linear-gradient(180deg, var(--bend-deep), var(--bend))"
+                        : drawActive
+                          ? "linear-gradient(180deg, var(--draw-deep), var(--draw))"
+                          : "linear-gradient(180deg, #57544D, #403E38)",
+                    }}>
+                    <span className="font-mono text-[8px] sm:text-[10px] font-bold"
+                          style={{ color: drawActive ? "#031B2E" : "#242320" }}>{draw.note}</span>
                   </div>
                 </div>
               </div>
@@ -413,14 +766,18 @@ function HarmonicaBody({ table, activeHole, activeAction }) {
           })}
         </div>
 
-        <div className="flex justify-center gap-6 mt-3">
+        <div className="flex justify-center flex-wrap gap-5 mt-3">
           <div className="flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 rounded-sm" style={{ background: "var(--blow)" }} />
-            <span className="font-mono text-[10px] tracking-wider text-[var(--cream-dim)]">BLOW</span>
+            <span className="font-mono text-[10px] tracking-wider text-[var(--cream-dim)]">BLOW (top)</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-2.5 h-2.5 rounded-sm" style={{ background: "var(--draw)" }} />
-            <span className="font-mono text-[10px] tracking-wider text-[var(--cream-dim)]">DRAW</span>
+            <span className="font-mono text-[10px] tracking-wider text-[var(--cream-dim)]">DRAW (bottom)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ background: "var(--bend)" }} />
+            <span className="font-mono text-[10px] tracking-wider text-[var(--cream-dim)]">BEND</span>
           </div>
         </div>
       </div>
@@ -428,26 +785,32 @@ function HarmonicaBody({ table, activeHole, activeAction }) {
   );
 }
 
-function ReferenceChart({ table, activeHole, activeAction }) {
+function ReferenceChart({ table, activeMap }) {
   return (
     <div className="grain-panel brass-edge rounded-xl p-4 overflow-x-auto scrollbar-thin">
       <h3 className="font-display text-base font-medium text-[var(--brass-bright)] mb-3">Tuning chart</h3>
       <table className="chart w-full text-sm">
         <thead>
           <tr className="text-left text-[var(--cream-dim)] font-mono text-[10px] tracking-widest">
-            <th className="pb-2 pr-4">HOLE</th><th className="pb-2 pr-4">BLOW</th><th className="pb-2 pr-4">Hz</th><th className="pb-2 pr-4">DRAW</th><th className="pb-2">Hz</th>
+            <th className="pb-2 pr-3">HOLE</th><th className="pb-2 pr-3">BLOW</th><th className="pb-2 pr-3">Hz</th>
+            <th className="pb-2 pr-3">DRAW</th><th className="pb-2 pr-3">Hz</th><th className="pb-2">BENDS</th>
           </tr>
         </thead>
         <tbody>
           {table.map(({ hole, blow, draw }) => {
-            const rowActive = activeHole === hole;
+            const blowActive = !!activeMap["" + hole + "-blow"];
+            const drawActive = !!activeMap["" + hole + "-draw"];
+            const db = BEND_RANGES.draw[hole];
+            const bb = BEND_RANGES.blow[hole];
+            const bendText = db ? "draw " + STEP_LABELS[db] : bb ? "blow " + STEP_LABELS[bb] : "\u2014";
             return (
               <tr key={hole} className="border-t" style={{ borderColor: "rgba(200,155,60,0.12)" }}>
-                <td className="py-1.5 pr-4 font-mono text-[var(--brass)]">{hole}</td>
-                <td className="py-1.5 pr-4 font-mono" style={{ color: rowActive && activeAction === "blow" ? "var(--blow)" : "var(--cream)" }}>{blow.note}</td>
-                <td className="py-1.5 pr-4 font-mono text-[var(--cream-dim)]">{blow.freq.toFixed(2)}</td>
-                <td className="py-1.5 pr-4 font-mono" style={{ color: rowActive && activeAction === "draw" ? "var(--draw)" : "var(--cream)" }}>{draw.note}</td>
-                <td className="py-1.5 font-mono text-[var(--cream-dim)]">{draw.freq.toFixed(2)}</td>
+                <td className="py-1.5 pr-3 font-mono text-[var(--brass)]">{hole}</td>
+                <td className="py-1.5 pr-3 font-mono" style={{ color: blowActive ? "var(--blow)" : "var(--cream)" }}>{blow.note}</td>
+                <td className="py-1.5 pr-3 font-mono text-[var(--cream-dim)]">{blow.freq.toFixed(1)}</td>
+                <td className="py-1.5 pr-3 font-mono" style={{ color: drawActive ? "var(--draw)" : "var(--cream)" }}>{draw.note}</td>
+                <td className="py-1.5 pr-3 font-mono text-[var(--cream-dim)]">{draw.freq.toFixed(1)}</td>
+                <td className="py-1.5 font-mono text-[11px]" style={{ color: (db || bb) ? "var(--bend)" : "var(--cream-dim)" }}>{bendText}</td>
               </tr>
             );
           })}
@@ -467,12 +830,20 @@ function App() {
   const [rawConfidence, setRawConfidence] = useState(0);
   const [permissionState, setPermissionState] = useState("idle");
   const [selectedKey, setSelectedKey] = useState("C");
+  const [chord, setChord] = useState(null);
 
   const audioCtxRef = useRef(null);
-  const analyserRef = useRef(null);
+  const analyserRef = useRef(null);       // time domain -> autocorrelation
+  const fftRef = useRef(null);            // frequency domain -> chords
   const streamRef = useRef(null);
   const rafRef = useRef(null);
   const bufferRef = useRef(null);
+  const fftBufferRef = useRef(null);
+  const frameRef = useRef(0);
+  const chordHoldRef = useRef({ value: null, t: 0 });
+  const keyRef = useRef("C");
+
+  useEffect(() => { keyRef.current = selectedKey; }, [selectedKey]);
 
   const table = HARMONICA_TABLES[selectedKey];
   const targets = useMemo(() => flattenTargets(table), [table]);
@@ -482,19 +853,66 @@ function App() {
 
   const chromatic = useMemo(() => nearestChromaticNote(stableFreq), [stableFreq]);
   const match = useMemo(() => nearestHarmonicaTarget(stableFreq, targets), [stableFreq, targets]);
+  const bend = useMemo(() => {
+    if (stableFreq == null || stableConfidence < 0.70) return null;
+    return detectBend(stableFreq, table, targets);
+  }, [stableFreq, stableConfidence, table, targets]);
 
-  const isLocked = match && Math.abs(match.cents) <= 45 && stableFreq != null && stableConfidence >= 0.85;
-  const activeHole = isLocked ? match.hole : null;
-  const activeAction = isLocked ? match.action : null;
+  const isChord = !!(chord && chord.holes && chord.holes.length >= 2);
+  const isLocked = !isChord && !bend && match && Math.abs(match.cents) <= 45 && stableFreq != null && stableConfidence >= 0.85;
+
+  /* Which reeds light up, and how. Chord wins over bend, bend
+     wins over a plain single note. */
+  const activeMap = useMemo(() => {
+    const m = {};
+    if (isChord) {
+      for (const h of chord.holes) m["" + h.hole + "-" + h.action] = { bend: false };
+      return m;
+    }
+    if (bend) { m["" + bend.hole + "-" + bend.action] = { bend: true }; return m; }
+    if (isLocked) { m["" + match.hole + "-" + match.action] = { bend: false }; }
+    return m;
+  }, [isChord, chord, bend, isLocked, match]);
+
+  const displayAction = isChord ? null : bend ? bend.action : isLocked ? match.action : null;
+  const displayHole = isChord ? null : bend ? bend.hole : isLocked ? match.hole : null;
 
   const tick = useCallback(() => {
     const analyser = analyserRef.current;
     const buffer = bufferRef.current;
-    if (analyser && buffer && audioCtxRef.current) {
+    const ctx = audioCtxRef.current;
+
+    if (analyser && buffer && ctx) {
       analyser.getFloatTimeDomainData(buffer);
-      const { freq, confidence } = autocorrelate(buffer, audioCtxRef.current.sampleRate);
-      setRawFreq(freq > 0 ? freq : null);
-      setRawConfidence(freq > 0 ? confidence : 0);
+      const res = autocorrelate(buffer, ctx.sampleRate);
+      setRawFreq(res.freq > 0 ? res.freq : null);
+      setRawConfidence(res.freq > 0 ? res.confidence : 0);
+
+      // Chord pass is ~5x cheaper to run at 1/5 the rate, and the
+      // ear can't tell the difference at ~12 updates/sec.
+      frameRef.current = (frameRef.current + 1) % 5;
+      if (frameRef.current === 0 && fftRef.current && fftBufferRef.current) {
+        const fft = fftRef.current;
+        fft.getFloatFrequencyData(fftBufferRef.current);
+        const peaks = findSpectralPeaks(fftBufferRef.current, ctx.sampleRate, fft.fftSize);
+        const funds = extractFundamentals(peaks);
+        const tgts = flattenTargets(HARMONICA_TABLES[keyRef.current]);
+        const matched = matchChordToHoles(funds, tgts);
+
+        const now = performance.now();
+        if (matched.holes.length >= 2 && matched.notes.length >= 2) {
+          const next = { holes: matched.holes, name: nameChord(matched.notes) };
+          chordHoldRef.current = { value: next, t: now };
+          setChord(next);
+        } else if (now - chordHoldRef.current.t > 450) {
+          // short hold so a chord doesn't strobe on the frames
+          // where one reed momentarily dips below the peak floor
+          if (chordHoldRef.current.value !== null) {
+            chordHoldRef.current = { value: null, t: now };
+            setChord(null);
+          }
+        }
+      }
     }
     rafRef.current = requestAnimationFrame(tick);
   }, []);
@@ -504,25 +922,12 @@ function App() {
     const diag = diagnoseEnvironment();
 
     if (diag.inIframe) {
-      setError(
-        "This page is running inside another site's iframe (for example, an embedded preview). " +
-        "Cross-origin iframes are not granted microphone access unless the embedding page explicitly allows it, " +
-        "and this one doesn't. Open this app directly — as its own tab/page at its own https:// address — and try again."
-      );
+      setError("This page is running inside another site's iframe (for example, an embedded preview). Cross-origin iframes are not granted microphone access unless the embedding page explicitly allows it, and this one doesn't. Open this app directly \u2014 as its own tab at its own https:// address \u2014 and try again.");
       return;
     }
-    if (!diag.secure) {
-      setError("Microphone access requires a secure context (HTTPS). This page is not running over HTTPS, so the browser will not grant microphone access.");
-      return;
-    }
-    if (!diag.hasMediaDevices) {
-      setError("This browser environment does not expose navigator.mediaDevices.getUserMedia, so microphone capture is unavailable here.");
-      return;
-    }
-    if (!diag.hasAudioContext) {
-      setError("This browser environment does not expose the Web Audio API (AudioContext), so pitch analysis is unavailable here.");
-      return;
-    }
+    if (!diag.secure) { setError("Microphone access requires a secure context (HTTPS)."); return; }
+    if (!diag.hasMediaDevices) { setError("This browser does not expose navigator.mediaDevices.getUserMedia."); return; }
+    if (!diag.hasAudioContext) { setError("This browser does not expose the Web Audio API (AudioContext)."); return; }
 
     setPermissionState("requesting");
     try {
@@ -537,11 +942,23 @@ function App() {
       if (audioCtx.state === "suspended") await audioCtx.resume();
 
       const source = audioCtx.createMediaStreamSource(stream);
+
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 2048;
       source.connect(analyser);
       analyserRef.current = analyser;
       bufferRef.current = new Float32Array(analyser.fftSize);
+
+      // Separate, larger FFT for chord work: 8192 bins gives ~5.4 Hz
+      // resolution, enough to separate adjacent harmonica reeds.
+      const fft = audioCtx.createAnalyser();
+      fft.fftSize = 8192;
+      fft.smoothingTimeConstant = 0.4;
+      fft.minDecibels = -95;
+      fft.maxDecibels = -10;
+      source.connect(fft);
+      fftRef.current = fft;
+      fftBufferRef.current = new Float32Array(fft.frequencyBinCount);
 
       setPermissionState("granted");
       setListening(true);
@@ -551,12 +968,9 @@ function App() {
       const name = err && err.name ? err.name : "Error";
       const message = err && err.message ? err.message : String(err);
       let hint = "";
-      if (name === "NotAllowedError") {
-        hint = " This usually means either you (or the browser) denied the prompt, or — if you're seeing this inside an embedded preview — the embedding context isn't allowed to request the mic at all. Open this app in its own browser tab at its https:// address.";
-      } else if (name === "NotFoundError") {
-        hint = " No microphone was found on this device.";
-      }
-      setError(`${name}: ${message}${hint}`);
+      if (name === "NotAllowedError") hint = " Either the prompt was denied, or this context isn't allowed to request the mic. On iOS check Settings \u203A Safari \u203A Microphone.";
+      else if (name === "NotFoundError") hint = " No microphone was found on this device.";
+      setError(name + ": " + message + hint);
     }
   };
 
@@ -565,54 +979,52 @@ function App() {
     setPermissionState("idle");
     setRawFreq(null);
     setRawConfidence(0);
+    setChord(null);
+    chordHoldRef.current = { value: null, t: 0 };
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     if (audioCtxRef.current) { audioCtxRef.current.close().catch(() => {}); audioCtxRef.current = null; }
     analyserRef.current = null;
+    fftRef.current = null;
     bufferRef.current = null;
+    fftBufferRef.current = null;
   };
 
   useEffect(() => () => stop(), []);
 
-  // Changing key mid-listen just changes what we compare against; no need to restart the mic.
-  const displayNote = stableFreq != null && chromatic ? `${chromatic.name}${chromatic.octave}` : "—";
-  const displayFreq = stableFreq != null ? stableFreq.toFixed(1) : "—";
-  const meterCents = stableFreq != null && match ? match.cents : (stableFreq != null && chromatic ? chromatic.cents : null);
+  const displayNote = stableFreq != null && chromatic ? chromatic.name + chromatic.octave : "\u2014";
+  const displayFreq = stableFreq != null ? stableFreq.toFixed(1) : "\u2014";
+  const meterCents = bend ? null : (stableFreq != null && match ? match.cents : (stableFreq != null && chromatic ? chromatic.cents : null));
 
   return (
     <div className="min-h-screen flex flex-col items-center px-4 py-8 sm:py-12">
-      <div className="w-full max-w-2xl text-center mb-8 rise-in">
-        <div className="font-mono text-[11px] tracking-[0.35em] text-[var(--brass)] mb-2">HOLE &amp; NOTE DETECTOR</div>
+      <div className="w-full max-w-2xl text-center mb-7 rise-in">
+        <div className="font-mono text-[11px] tracking-[0.35em] text-[var(--brass)] mb-2">HOLE &middot; BREATH &middot; BEND &middot; CHORD</div>
         <h1 className="font-display text-4xl sm:text-5xl font-semibold text-[var(--cream)] leading-tight">Harmonica Tuner</h1>
         <p className="text-[var(--cream-dim)] mt-2 text-sm sm:text-base max-w-md mx-auto">
-          Play a note into your microphone. We'll find the hole, the breath direction, and how in-tune you are.
+          Play into the microphone. Green means blow, blue means draw, amber means you're bending.
         </p>
       </div>
 
-      <div className="w-full max-w-2xl flex flex-col gap-6">
+      <div className="w-full max-w-2xl flex flex-col gap-5">
 
         <div className="grain-panel brass-edge rounded-xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 rise-in" style={{ animationDelay: "60ms" }}>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
-              <div
-                className="w-3 h-3 rounded-full flex-shrink-0"
-                style={{ background: listening ? "var(--draw)" : "var(--brass-dim)", boxShadow: listening ? "0 0 10px 2px rgba(95,175,166,0.7)" : "none" }}
-              />
+              <div className="w-3 h-3 rounded-full flex-shrink-0"
+                style={{ background: listening ? "var(--blow)" : "var(--brass-dim)", boxShadow: listening ? "0 0 10px 2px rgba(43,224,107,0.7)" : "none" }} />
               <span className="font-mono text-xs tracking-widest text-[var(--cream-dim)]">{listening ? "LISTENING" : "MICROPHONE OFF"}</span>
             </div>
             <KeySelector selectedKey={selectedKey} onChange={setSelectedKey} />
           </div>
-          <button
-            onClick={listening ? stop : start}
-            disabled={permissionState === "requesting"}
+          <button onClick={listening ? stop : start} disabled={permissionState === "requesting"}
             className="font-mono font-bold text-sm tracking-widest px-6 py-3.5 rounded-lg transition-transform active:scale-[0.97] disabled:opacity-60 w-full sm:w-auto"
             style={{
               background: listening ? "var(--danger)" : "linear-gradient(180deg, var(--brass-bright), var(--brass))",
               color: listening ? "#2A130D" : "#221805", border: "none",
               boxShadow: listening ? "0 4px 14px -4px rgba(200,84,60,0.6)" : "0 4px 14px -4px rgba(200,155,60,0.6)",
-            }}
-          >
-            {permissionState === "requesting" ? "REQUESTING ACCESS…" : listening ? "■ STOP LISTENING" : "▶ START LISTENING"}
+            }}>
+            {permissionState === "requesting" ? "REQUESTING ACCESS\u2026" : listening ? "\u25A0 STOP LISTENING" : "\u25B6 START LISTENING"}
           </button>
         </div>
 
@@ -623,8 +1035,13 @@ function App() {
           </div>
         )}
 
-        <div className="grain-panel brass-edge rounded-xl p-5 sm:p-6 rise-in" style={{ animationDelay: "120ms" }}>
-          <div className="grid grid-cols-2 gap-6 mb-6">
+        {/* BIG BLOW / DRAW READOUT */}
+        <div className="rise-in" style={{ animationDelay: "100ms" }}>
+          <ActionBadge action={displayAction} hole={displayHole} bending={!!bend} />
+        </div>
+
+        <div className="grain-panel brass-edge rounded-xl p-5 sm:p-6 rise-in" style={{ animationDelay: "140ms" }}>
+          <div className="grid grid-cols-2 gap-6 mb-5">
             <div>
               <div className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)] mb-1">FREQUENCY</div>
               <div className="font-mono text-3xl sm:text-4xl font-medium text-[var(--cream)] tabular-nums">{displayFreq}<span className="text-base text-[var(--cream-dim)] ml-1">Hz</span></div>
@@ -640,40 +1057,36 @@ function App() {
           <div className="mt-4 grid grid-cols-2 gap-4">
             <div>
               <div className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)] mb-1">CENTS</div>
-              <div className="font-mono text-lg tabular-nums" style={{ color: meterCents == null ? "var(--cream-dim)" : Math.abs(meterCents) <= 6 ? "var(--brass-bright)" : "var(--danger)" }}>
-                {meterCents == null ? "—" : `${meterCents > 0 ? "+" : ""}${meterCents.toFixed(1)}¢`}
+              <div className="font-mono text-lg tabular-nums"
+                   style={{ color: meterCents == null ? "var(--cream-dim)" : Math.abs(meterCents) <= 6 ? "var(--brass-bright)" : "var(--danger)" }}>
+                {meterCents == null ? (bend ? "bending" : "\u2014") : (meterCents > 0 ? "+" : "") + meterCents.toFixed(1) + "\u00A2"}
               </div>
             </div>
             <div className="text-right">
               <div className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)] mb-1">CONFIDENCE</div>
-              <div className="font-mono text-lg tabular-nums text-[var(--cream)]">{listening ? `${Math.round(stableConfidence * 100)}%` : "—"}</div>
-            </div>
-          </div>
-
-          <div className="mt-5 pt-5 flex items-center justify-between" style={{ borderTop: "1px solid rgba(200,155,60,0.15)" }}>
-            <div>
-              <div className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)] mb-1">HOLE</div>
-              <div className="font-display text-2xl font-medium text-[var(--cream)]">{isLocked ? activeHole : "—"}</div>
-            </div>
-            <div className="text-right">
-              <div className="font-mono text-[10px] tracking-widest text-[var(--cream-dim)] mb-1">ACTION</div>
-              <div className="font-display text-2xl font-medium uppercase" style={{ color: isLocked ? (activeAction === "blow" ? "var(--blow)" : "var(--draw)") : "var(--cream)" }}>
-                {isLocked ? activeAction : "—"}
-              </div>
+              <div className="font-mono text-lg tabular-nums text-[var(--cream)]">{listening ? Math.round(stableConfidence * 100) + "%" : "\u2014"}</div>
             </div>
           </div>
         </div>
 
         <div className="rise-in" style={{ animationDelay: "180ms" }}>
-          <HarmonicaBody table={table} activeHole={activeHole} activeAction={activeAction} />
+          <BendMeter bend={bend} />
+        </div>
+
+        <div className="rise-in" style={{ animationDelay: "210ms" }}>
+          <ChordPanel chord={chord} />
         </div>
 
         <div className="rise-in" style={{ animationDelay: "240ms" }}>
-          <ReferenceChart table={table} activeHole={activeHole} activeAction={activeAction} />
+          <HarmonicaBody table={table} tableKey={selectedKey} activeMap={activeMap} />
+        </div>
+
+        <div className="rise-in" style={{ animationDelay: "280ms" }}>
+          <ReferenceChart table={table} activeMap={activeMap} />
         </div>
 
         <p className="text-center text-[var(--cream-dim)]/60 text-xs pb-4">
-          Best in a quiet room, holding the harmonica close to the microphone. Tuning tolerance shown is &plusmn;50 cents.
+          Best in a quiet room with the harp close to the mic. Bends register past 40&cent; flat; chords need two or more reeds sounding together.
         </p>
       </div>
     </div>

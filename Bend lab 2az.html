@@ -1,0 +1,1564 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BendLab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --plate:#E6E9EB; --panel:#F4F5F6; --ink:#1B2127; --muted:#56616B; --line:#C3C9CE;
+  --brass:#9A5F22; --zone-gray:rgba(98,110,122,.26); --zone-gray-edge:#7C8791;
+  --laser:#1461DB; --laser-soft:rgba(20,97,219,.22); --warn:#B8381F; --ok:#2E7447;
+  --trace:#1B2127; --trace-dim:rgba(27,33,39,.35);
+  --font:"Archivo", "Helvetica Neue", Arial, system-ui, sans-serif;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --plate:#121518; --panel:#1B1F23; --ink:#E4E8EB; --muted:#98A3AD; --line:#343B42;
+  --brass:#D59A55; --zone-gray:rgba(170,180,190,.2); --zone-gray-edge:#8D98A2;
+  --laser:#4C8DFF; --laser-soft:rgba(76,141,255,.28); --warn:#F07457; --ok:#62C08A;
+  --trace:#E4E8EB; --trace-dim:rgba(228,232,235,.35);
+}}
+:root[data-theme="dark"]{
+  --plate:#121518; --panel:#1B1F23; --ink:#E4E8EB; --muted:#98A3AD; --line:#343B42;
+  --brass:#D59A55; --zone-gray:rgba(170,180,190,.2); --zone-gray-edge:#8D98A2;
+  --laser:#4C8DFF; --laser-soft:rgba(76,141,255,.28); --warn:#F07457; --ok:#62C08A;
+  --trace:#E4E8EB; --trace-dim:rgba(228,232,235,.35);
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--plate);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.45;font-variant-numeric:tabular-nums;-webkit-tap-highlight-color:transparent}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--laser);outline-offset:2px}
+.wrap{max-width:760px;margin:0 auto;padding:0 14px 40px}
+header.top{display:flex;align-items:center;gap:10px;padding:12px 0 10px;flex-wrap:wrap}
+.brand{font-weight:800;font-stretch:125%;font-size:22px;letter-spacing:-.01em;margin:0 auto 0 0}
+.brand span{font-weight:400;font-stretch:100%;color:var(--muted);font-size:13px;margin-left:6px}
+.keysel{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--muted)}
+select{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:8px 12px;font-weight:600;font-size:14px}
+.btn.primary{background:var(--ink);color:var(--plate);border-color:var(--ink)}
+.btn.live{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn:disabled{opacity:.45;cursor:default}
+.lvl{width:44px;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.lvl i{display:block;height:100%;width:0;background:var(--ok)}
+
+/* stage: the bend meter */
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px}
+.target-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tgt{display:flex;align-items:baseline;gap:8px;margin-right:auto;min-width:0}
+.tgt .tab{font-weight:800;font-stretch:112%;font-size:26px}
+.tgt .nm{font-weight:700;font-size:20px}
+.tgt .hz{color:var(--muted);font-size:14px}
+.tgt-desc{color:var(--muted);font-size:13px;margin:2px 0 8px}
+#meter{display:block;width:100%;height:270px;touch-action:pan-y}
+#zone{display:block;width:100%;height:54px;margin-top:6px}
+.readouts{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:6px 12px;margin-top:10px;align-items:end}
+.big{font-weight:800;font-stretch:88%;font-size:52px;line-height:1;letter-spacing:-.02em}
+.big.sharp{color:var(--warn)} .big.gray{color:var(--ink)} .big.blue{color:var(--laser)} .big.idle{color:var(--line)}
+.ro small{display:block;color:var(--muted);font-size:12px}
+.ro b{font-size:17px;font-weight:700}
+.laser{margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--laser);color:#fff;font-weight:800;font-stretch:120%;font-size:18px;letter-spacing:.02em;visibility:hidden}
+.laser.on{visibility:visible}
+.coach{font-size:19px;font-weight:600;min-height:2.9em;margin:10px 0 0}
+.notice{margin-top:8px;padding:10px;border-radius:6px;border:1px solid var(--warn);color:var(--ink);font-size:14px;display:none}
+.notice.on{display:block}
+.holdbar{height:10px;border-radius:5px;background:var(--line);overflow:hidden;margin-top:8px;position:relative}
+.holdbar i{position:absolute;inset:0 auto 0 0;width:0;background:var(--zone-gray-edge)}
+.holdbar i.blue{background:var(--laser)}
+.holdlbl{font-size:12px;color:var(--muted);margin-top:3px;display:flex;justify-content:space-between}
+
+/* mode switch */
+.modesw{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:10px}
+.modesw button{flex:1;border:0;background:none;padding:9px 6px;font-weight:700;font-size:14px;color:var(--muted)}
+.modesw button[aria-pressed="true"]{background:var(--ink);color:var(--plate)}
+/* DETECTED panel: only ever shows what the microphone hears */
+.det{border:2px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px;transition:opacity .15s}
+.det.on{border-color:var(--ink)} .det.dim{opacity:.5}
+.det-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.pill{display:inline-block;font-weight:800;font-stretch:120%;font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:4px}
+.det-pill{background:var(--ink);color:var(--plate)}
+.tgt-pill{background:transparent;color:var(--brass);border:1.5px solid var(--brass)}
+.det-status{margin-left:auto;font-weight:600}
+.det-main{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;margin-top:6px}
+.det-hole small,.det-note small,.det-grid small{display:block;color:var(--muted);font-size:12px}
+.det-hole b{font-weight:800;font-stretch:88%;font-size:64px;line-height:.95;letter-spacing:-.02em}
+.det-note{text-align:right}.det-note b{font-weight:800;font-size:30px}
+.det-dir{justify-self:start;font-weight:800;font-stretch:120%;font-size:26px;letter-spacing:.06em;padding:6px 14px;border-radius:8px;color:var(--muted);border:2px dashed var(--line)}
+.det-dir.blow{background:var(--ok);border:2px solid var(--ok);color:#fff}
+.det-dir.draw{background:var(--laser);border:2px solid var(--laser);color:#fff}
+.det-dir.amb{background:transparent;border:2px dashed var(--warn);color:var(--warn);font-size:18px}
+.det-amb{margin-top:6px;font-size:13px;color:var(--warn);font-weight:600}
+.det-grid{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:6px 10px;margin-top:8px}
+.det-grid b{font-size:16px;font-weight:700}
+.tbox{border-top:1px solid var(--line);padding-top:10px}
+.tmatch{font-size:13px;font-weight:600;margin:0 0 6px}
+.tmatch.ok{color:var(--ok)} .tmatch.no{color:var(--warn)}
+.stage[data-mode="free"] .tonly{display:none}
+.stage[data-mode="target"] .fonly{display:none}
+.chip.hit{outline:3px solid var(--ok);outline-offset:1px}
+.chip.hit.d{outline-color:var(--laser)}
+.lvl{position:relative}
+.lvl s{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--warn);left:0}
+details.dbg{margin-top:10px;font-size:13px}
+details.dbg pre{white-space:pre-wrap;font:12px/1.45 ui-monospace,Menlo,monospace;background:var(--plate);border:1px solid var(--line);border-radius:6px;padding:8px;margin:6px 0 0;overflow-x:auto}
+@media (max-width:420px){ .det-hole b{font-size:54px} .det-dir{font-size:22px;padding:5px 10px} .det-grid{grid-template-columns:1fr 1fr} }
+
+/* tabs */
+nav.tabs{display:flex;border-bottom:1px solid var(--line);margin-bottom:12px;position:sticky;top:0;background:var(--plate);z-index:2;padding-top:env(safe-area-inset-top,0px)}
+nav.tabs button{flex:1;border:0;background:none;padding:10px 4px;font-weight:600;color:var(--muted);border-bottom:3px solid transparent}
+nav.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--brass)}
+.view{display:none}.view.on{display:block}
+h2{font-size:18px;font-stretch:112%;margin:16px 0 6px}
+p.lead{color:var(--muted);margin:0 0 10px;font-size:14px;max-width:62ch}
+
+/* harmonica map */
+.harp-scroll{overflow-x:auto;padding-bottom:4px}
+.harp{display:grid;grid-template-columns:repeat(10,minmax(34px,1fr));gap:3px;min-width:350px}
+.col{display:grid;grid-template-rows:repeat(2,30px) 34px 28px 34px repeat(3,30px);gap:3px}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:5px;font-size:13px;font-weight:700;padding:0;min-height:0;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.chip.bend{border-style:dashed;font-weight:600;color:var(--muted);background:transparent}
+.chip.sel{background:var(--brass);border-color:var(--brass);color:#fff;border-style:solid}
+.chip.lad{border-color:var(--brass)}
+.holeno{display:flex;align-items:center;justify-content:center;background:var(--ink);color:var(--plate);border-radius:3px;font-weight:800;font-size:13px}
+.rowlbl{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin:4px 0}
+.tone-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;font-size:14px}
+.tone-row input[type=range]{width:120px}
+
+/* last attempt */
+.summary{border-top:1px solid var(--line);margin-top:12px;padding-top:10px;font-size:14px}
+.summary dl{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:4px 14px;margin:6px 0 0}
+.summary dt{color:var(--muted);font-size:12px}.summary dd{margin:0;font-weight:700}
+.summary .verdict{font-weight:700}
+
+/* learn */
+.levels{list-style:none;padding:0;margin:0;display:grid;gap:6px}
+.levels button{width:100%;text-align:left;display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:10px}
+.levels .num{font-weight:800;font-stretch:120%;font-size:20px;color:var(--brass)}
+.levels .t{font-weight:700}.levels .g{display:block;color:var(--muted);font-size:13px;font-weight:400}
+.levels .done{font-size:13px;color:var(--ok);font-weight:700}
+.lesson{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:12px}
+.lesson h3{margin:0 0 4px;font-size:18px;font-stretch:112%}
+.steps{display:flex;gap:4px;flex-wrap:wrap;margin:10px 0}
+.steps span{min-width:34px;padding:3px 6px;border:1px solid var(--line);border-radius:4px;font-size:13px;text-align:center}
+.steps span.cur{border-color:var(--brass);font-weight:700}
+.steps span.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.reps{font-size:15px;font-weight:600;margin:6px 0}
+.flash{font-weight:800;font-size:18px;min-height:1.5em}
+.flash.good{color:var(--ok)} .flash.bad{color:var(--warn)}
+details{margin-top:10px;font-size:14px} summary{cursor:pointer;font-weight:600}
+details ul{margin:6px 0;padding-left:18px;color:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+
+/* progress */
+.tbl-scroll{overflow-x:auto}
+table{border-collapse:collapse;font-size:13px;min-width:680px;width:100%}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:600}
+.empty{color:var(--muted);font-size:14px}
+
+/* settings */
+.set{display:grid;gap:12px;max-width:520px}
+.set label{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center;font-size:15px}
+.set label small{grid-column:1/-1;color:var(--muted);font-size:12px}
+.set input[type=number]{width:84px;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.sync{font-size:12px;color:var(--muted);margin-top:14px}
+@media (max-width:420px){ .brand span{display:none}  .big{font-size:44px} .coach{font-size:17px} .readouts{grid-template-columns:1.2fr 1fr 1fr} }
+@media (prefers-reduced-motion: reduce){ *{transition:none!important;animation:none!important} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <h1 class="brand">BendLab <span>harmonica bend trainer</span></h1>
+  <label class="keysel">Key <select id="keySel" aria-label="Harmonica key"></select></label>
+  <div class="lvl" title="Microphone input level; the red mark is the current detection threshold" aria-hidden="true"><i id="lvl"></i><s id="lvlThr"></s></div>
+  <button id="micBtn" class="btn primary">Start microphone</button>
+</header>
+
+<section class="stage" id="stage" data-mode="free" aria-label="Live detection and bend meter">
+  <div class="modesw" role="group" aria-label="Mode">
+    <button id="modeFree" aria-pressed="true">Free play</button>
+    <button id="modeTarget" aria-pressed="false">Target practice</button>
+  </div>
+  <div class="det" id="det">
+    <div class="det-top"><span class="pill det-pill">Detected</span><span>what you are actually playing</span><span class="det-status" id="detStatus">Microphone off</span></div>
+    <div class="det-main">
+      <div class="det-hole"><small>Hole</small><b id="detHole">—</b></div>
+      <div class="det-dir" id="detDir">—</div>
+      <div class="det-note"><small>Note</small><b id="detNote">—</b></div>
+    </div>
+    <div class="det-amb" id="detAmb" hidden></div>
+    <div class="det-grid">
+      <div><small>Bend</small><b id="detBend">—</b></div>
+      <div><small>Cents</small><b id="detCents">—</b></div>
+      <div><small>Frequency</small><b id="detFreq">—</b></div>
+      <div><small>Confidence</small><b id="detConf">—</b></div>
+    </div>
+  </div>
+  <div class="tbox tonly" id="targetBox">
+  <div class="target-row">
+    <div class="tgt"><span class="pill tgt-pill">Target</span><span class="tab" id="tTab">−3″</span><span class="nm" id="tName">A4</span><span class="hz" id="tHz">440.00 Hz</span></div>
+    <button class="btn" id="hearBtn">Hear target</button>
+    <button class="btn" id="stopBtn">Stop</button>
+  </div>
+  <div class="tgt-desc" id="tDesc"></div>
+  <p class="tmatch" id="tMatch"></p>
+  </div>
+  <canvas id="meter" aria-label="Pitch path from the natural note to the deepest bend on this hole"></canvas>
+  <canvas id="zone" aria-label="Distance from target in cents"></canvas>
+  <div class="laser tonly" id="laser">LASER ACCURATE 0¢</div>
+  <div class="readouts">
+    <div class="ro"><small id="centsLbl">Off note</small><div class="big idle" id="cents">—</div></div>
+    <div class="ro"><small>Pitch</small><b id="dNote">—</b><small id="dHz">— Hz</small></div>
+    <div class="ro"><small>Stability</small><b id="stab">—</b><small id="phase">Waiting</small></div>
+  </div>
+  <div class="holdbar tonly" aria-hidden="true"><i id="holdFill"></i></div>
+  <div class="holdlbl tonly"><span id="holdTxt">Hold 0.0 s</span><span id="holdGoal"></span></div>
+  <p class="coach" id="coach" aria-live="polite"></p>
+  <div class="notice" id="micNotice" role="alert"></div>
+  <div class="summary tonly" id="summary" hidden></div>
+  <details class="dbg" id="dbg"><summary>Debug: why a note was or wasn't detected</summary><pre id="dbgPre">Start the microphone.</pre></details>
+</section>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" data-view="train" aria-selected="true">Practice</button>
+  <button role="tab" data-view="learn" aria-selected="false">Learn</button>
+  <button role="tab" data-view="progress" aria-selected="false">Progress</button>
+  <button role="tab" data-view="settings" aria-selected="false">Settings</button>
+</nav>
+
+<section class="view on" id="view-train">
+  <p class="lead">In Free play the map lights up whatever you are playing. Tap any note to hear it and practice it as a target. Hold to sustain the tone. Dashed notes are bends.</p>
+  <div class="harp-scroll">
+    <div class="rowlbl"><span>Blow bends</span></div>
+    <div class="harp" id="harp"></div>
+    <div class="rowlbl"><span>Draw bends</span></div>
+  </div>
+  <div class="tone-row">
+    <label>Volume <input type="range" id="vol" min="0" max="1" step="0.01"></label>
+    <label>Tone <select id="timbre"><option value="sine">Pure reference</option><option value="reed">Reed-like</option></select></label>
+    <label><input type="checkbox" id="directMode"> Direct-hit mode</label>
+  </div>
+</section>
+
+<section class="view" id="view-learn">
+  <div id="levelList"></div>
+  <div id="lessonPanel" hidden></div>
+</section>
+
+<section class="view" id="view-progress"><div id="progressBody"></div></section>
+
+<section class="view" id="view-settings">
+  <div class="set">
+    <label>Gray zone (perfect tuning), ± cents <input type="number" id="sGray" min="2" max="40" step="1"><small>Target counts as reached inside this range.</small></label>
+    <label>Blue zone (laser accurate), ± cents <input type="number" id="sBlue" min="1" max="20" step="1"><small>Must be smaller than the gray zone.</small></label>
+    <label>Attack window, ms <input type="number" id="sTrans" min="40" max="400" step="10"><small>Pitch right after the note starts is shown but not scored for held bends.</small></label>
+    <label>Required time in zone to count as reached, ms <input type="number" id="sReach" min="100" max="1000" step="50"></label>
+    <label>Minimum input level <input type="number" id="sMin" min="0.0001" max="0.05" step="0.0001"><small>BendLab measures your room's noise on its own and sets the detection threshold above it (the red mark on the level bar). This is only an absolute floor underneath that. Raise it only if a noisy microphone still produces notes when nobody is playing. Default 0.0004.</small></label>
+    <label>Reference pitch A4 <b>440 Hz</b><small>Equal temperament. Every target and reference tone is calculated from A4 = 440 Hz.</small></label>
+    <div class="row"><button class="btn" id="resetBtn">Reset all progress</button></div>
+    <p class="sync" id="syncTxt">Progress is saved in this browser.</p>
+  </div>
+</section>
+</div>
+<script>
+// ===================== BendLab core (no DOM) =====================
+// All tunable thresholds live here. UI reads from CONFIG; nothing else hard-codes them.
+const CONFIG = {
+  A4: 440,
+  grayCents: 10,        // perfect-tuning zone (±)
+  blueCents: 3,         // laser-accurate zone (±), nested inside gray
+  transientMs: 150,     // attack window after onset: shown, not scored for sustain
+  onsetFrames: 3,       // consecutive voiced frames needed to start an attempt
+  releaseMs: 200,       // silence needed to end an attempt
+  reachMs: 250,         // continuous time in gray to count as "reached"
+  holdGraceMs: 80,      // brief dropouts tolerated before a hold resets
+  stableWindowMs: 120,  // window for "initial stable pitch"
+  stableStdCents: 6,    // max std-dev (cents) for a window to count as stable
+  overshootCents: 30,   // this far flat of target = overshoot
+  stallMs: 450,         // steady this long, still sharp, = stalled
+  discoverDropCents: 40,// Level 1: drop needed from start pitch
+  discoverHoldMs: 120,
+  minAttemptMs: 250,    // shorter voiced blips are ignored
+  yinThreshold: 0.15,
+  minFreq: 110,
+  maxFreq: 4200,
+};
+
+const PC_NAMES = ['C','D♭','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+const pcName = m => PC_NAMES[((m % 12) + 12) % 12];
+const noteName = m => pcName(m) + (Math.floor(m / 12) - 1);
+const midiToFreq = m => CONFIG.A4 * Math.pow(2, (m - 69) / 12);
+const freqToMidi = f => 69 + 12 * Math.log2(f / CONFIG.A4);
+const centsBetween = (f, ref) => 1200 * Math.log2(f / ref);
+
+// Harmonica keys: offset in semitones from a standard C harp (hole 1 blow = C4)
+const KEYS = [
+  { id: 'G', name: 'G', off: -5 }, { id: 'Ab', name: 'A♭', off: -4 },
+  { id: 'A', name: 'A', off: -3 }, { id: 'Bb', name: 'B♭', off: -2 },
+  { id: 'B', name: 'B', off: -1 }, { id: 'C', name: 'C', off: 0 },
+  { id: 'Db', name: 'D♭', off: 1 }, { id: 'D', name: 'D', off: 2 },
+  { id: 'Eb', name: 'E♭', off: 3 }, { id: 'E', name: 'E', off: 4 },
+  { id: 'F', name: 'F', off: 5 }, { id: 'Fs', name: 'F♯', off: 6 },
+  { id: 'LF', name: 'Low F', off: -7 }, { id: 'LD', name: 'Low D', off: -10 },
+];
+
+// Richter tuning, C harmonica, MIDI numbers
+const RICHTER_BLOW = [60, 64, 67, 72, 76, 79, 84, 88, 91, 96];
+const RICHTER_DRAW = [62, 67, 71, 74, 77, 81, 83, 86, 89, 93];
+const PRIMES = ['', '′', '″', '‴'];
+const STEP_WORDS = ['', 'half step', 'whole step', '1½ step'];
+
+function makeNote(hole, dir, bend, midi) {
+  const id = `${hole}${dir === 'draw' ? 'D' : 'B'}${bend || ''}`;
+  const tab = (dir === 'draw' ? '−' : '+') + hole + PRIMES[bend];
+  const desc = `${hole} ${dir}` + (bend ? ` bend, ${STEP_WORDS[bend]}` : '');
+  return { id, hole, dir, bend, midi, freq: midiToFreq(midi), name: noteName(midi), pc: pcName(midi), tab, desc };
+}
+
+// Conventional bends only: on each hole the higher reed bends down toward (not onto) the lower reed.
+function buildHarp(keyId) {
+  const key = KEYS.find(k => k.id === keyId) || KEYS[5];
+  const holes = [];
+  const all = {};
+  for (let i = 0; i < 10; i++) {
+    const hole = i + 1;
+    const blow = RICHTER_BLOW[i] + key.off, draw = RICHTER_DRAW[i] + key.off;
+    const h = { hole, blow: makeNote(hole, 'blow', 0, blow), draw: makeNote(hole, 'draw', 0, draw), blowBends: [], drawBends: [] };
+    for (let k = 1; k < draw - blow; k++) h.drawBends.push(makeNote(hole, 'draw', k, draw - k));
+    for (let k = 1; k < blow - draw; k++) h.blowBends.push(makeNote(hole, 'blow', k, blow - k));
+    holes.push(h);
+    [h.blow, h.draw, ...h.blowBends, ...h.drawBends].forEach(n => (all[n.id] = n));
+  }
+  return { key, holes, notes: all };
+}
+
+// The full pitch path for a note's hole and direction: natural first, then each bend deeper.
+function ladderFor(harp, note) {
+  const h = harp.holes[note.hole - 1];
+  return note.dir === 'draw' ? [h.draw, ...h.drawBends] : [h.blow, ...h.blowBends];
+}
+
+function allBends(harp) {
+  return harp.holes.flatMap(h => [...h.drawBends, ...h.blowBends]);
+}
+
+// ---------------- YIN pitch detector ----------------
+// de Cheveigné & Kawahara (2002): difference function, cumulative-mean normalisation,
+// absolute threshold, parabolic interpolation on the raw difference function.
+function createDetector(maxSize) {
+  let d = new Float32Array(maxSize), c = new Float32Array(maxSize);
+  return function detect(buf, sr) {
+    const n = buf.length;
+    const tauMax = Math.min(Math.floor(sr / CONFIG.minFreq), (n >> 1) - 2);
+    const tauMin = Math.max(2, Math.floor(sr / CONFIG.maxFreq));
+    if (d.length < tauMax + 2) { d = new Float32Array(tauMax + 2); c = new Float32Array(tauMax + 2); }
+    const W = n - tauMax - 1;
+    for (let tau = 1; tau <= tauMax + 1; tau++) {
+      let s = 0;
+      for (let i = 0; i < W; i++) { const x = buf[i] - buf[i + tau]; s += x * x; }
+      d[tau] = s;
+    }
+    let cum = 0;
+    c[0] = 1;
+    for (let tau = 1; tau <= tauMax + 1; tau++) { cum += d[tau]; c[tau] = cum > 0 ? (d[tau] * tau) / cum : 1; }
+    let tau = -1;
+    for (let t = tauMin; t <= tauMax; t++) {
+      if (c[t] < CONFIG.yinThreshold) {
+        while (t + 1 <= tauMax && c[t + 1] < c[t]) t++;
+        tau = t; break;
+      }
+    }
+    if (tau < 0) {
+      // No dip under the fixed threshold (common for soft or breathy notes). Take the first dip that is
+      // nearly as deep as the deepest one: the global minimum alone is often a subharmonic (octave low).
+      let best = Infinity;
+      for (let t = tauMin; t <= tauMax; t++) if (c[t] < best) best = c[t];
+      if (best > 0.3) return null;
+      const lim = Math.min(0.3, best + 0.06);
+      for (let t = tauMin; t <= tauMax; t++) {
+        if (c[t] <= lim) { while (t + 1 <= tauMax && c[t + 1] < c[t]) t++; tau = t; break; }
+      }
+      if (tau < 0) return null;
+    }
+    let better = tau;
+    if (tau > 1 && tau <= tauMax) {
+      const a = d[tau - 1], b = d[tau], e = d[tau + 1];
+      const den = a - 2 * b + e;
+      if (den > 0) better = tau + (0.5 * (a - e)) / den;
+    }
+    // Multi-period refinement: short lags (high notes) have coarse resolution, so measure the
+    // lag of k whole periods instead and divide by k.
+    // Doubling k each pass keeps every search within ±1 sample of the previous estimate.
+    const Wk = n - tauMax - 4;
+    const dAt = T => { let s = 0; for (let i = 0; i < Wk; i++) { const x = buf[i] - buf[i + T]; s += x * x; } return s; };
+    for (let k = 2; k * better <= tauMax + 1; k *= 2) {
+      const T0 = Math.round(k * better);
+      let bestT = T0, bestV = dAt(T0);
+      for (const T of [T0 - 1, T0 + 1]) { const v = dAt(T); if (v < bestV) { bestV = v; bestT = T; } }
+      const a = dAt(bestT - 1), e = dAt(bestT + 1), den = a - 2 * bestV + e;
+      const refined = (bestT + (den > 0 ? (0.5 * (a - e)) / den : 0)) / k;
+      if (Math.abs(refined - better) < 0.5) better = refined; else break;
+    }
+    return { freq: sr / better, conf: 1 - c[tau] };
+  };
+}
+
+function rmsOf(buf) { let s = 0; for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i]; return Math.sqrt(s / buf.length); }
+
+function meanStd(arr) {
+  if (!arr.length) return { mean: 0, std: 0 };
+  let m = 0; for (const v of arr) m += v; m /= arr.length;
+  let v2 = 0; for (const v of arr) v2 += (v - m) * (v - m);
+  return { mean: m, std: Math.sqrt(v2 / arr.length) };
+}
+
+function slopePerSec(samples) { // linear regression slope of cents vs time, cents per second
+  const n = samples.length; if (n < 4) return 0;
+  let st = 0, sc = 0; for (const s of samples) { st += s.t; sc += s.c; }
+  const mt = st / n, mc = sc / n; let num = 0, den = 0;
+  for (const s of samples) { num += (s.t - mt) * (s.c - mc); den += (s.t - mt) * (s.t - mt); }
+  return den ? (num / den) * 1000 : 0;
+}
+
+const fmtCents = c => { const r = Math.round(c); return (r < 0 ? '−' + -r : r > 0 ? '+' + r : '0') + '¢'; };
+
+// ---------------- Attempt tracker ----------------
+// Observes the whole note; separates attack, movement and stable hold. Only hold runs are scored
+// for sustained accuracy; the whole trajectory is kept for coaching.
+class Tracker {
+  constructor(cfg) { this.cfg = cfg; this.onFinish = null; this.target = null; this.mode = 'sustain'; }
+  setTarget(note, ladder, mode) {
+    this.target = note; this.ladder = ladder; this.mode = mode || 'sustain';
+    this.nat = ladder[0];
+    this.natF = midiToFreq(this.nat.midi);
+    this.targetNat = (note.midi - this.nat.midi) * 100; // target position in cents relative to natural
+    const lowest = ladder[ladder.length - 1];
+    this.winLo = midiToFreq(lowest.midi) * Math.pow(2, -450 / 1200);
+    this.winHi = this.natF * Math.pow(2, 450 / 1200);
+    this.abort();
+  }
+  abort() { this.att = null; this.pending = []; this.med = []; this.live = { active: false }; }
+  fold(f) { // correct octave errors into this hole's window when unambiguous
+    if (!f) return null;
+    if (f >= this.winLo && f <= this.winHi) return f;
+    for (const m of [2, 0.5]) { const g = f * m; if (g >= this.winLo && g <= this.winHi) return g; }
+    return null;
+  }
+  feed(t, rawF) {
+    const cfg = this.cfg;
+    const f = this.fold(rawF);
+    let zoneNat = null;
+    if (f) {
+      const cn = centsBetween(f, this.natF);
+      this.med.push(cn); if (this.med.length > 3) this.med.shift();
+      zoneNat = [...this.med].sort((a, b) => a - b)[this.med.length >> 1];
+    } else {
+      this.med.length = 0;
+    }
+    if (!this.att) {
+      if (f) {
+        this.pending.push({ t, cn: centsBetween(f, this.natF) });
+        if (this.pending.length >= cfg.onsetFrames) this.start();
+      } else this.pending.length = 0;
+      if (!this.att) { this.live = { active: false, outOfRange: !!rawF && !f, rawF }; return this.live; }
+      return this.process(t, f, zoneNat, true);
+    }
+    return this.process(t, f, zoneNat, false);
+  }
+  start() {
+    const t0 = this.pending[0].t;
+    this.att = {
+      t0, samples: [], lastVoicedT: t0, prevT: t0,
+      grayStart: null, lastGrayT: null, holdRuns: [], reached: false, reachedT: null, timeToTarget: null,
+      blueStart: null, lastBlueT: null, blueMs: 0, longestBlue: 0,
+      initial: null, initialT: null, startNat: null, minNat: Infinity, maxNat: -Infinity,
+      bending: false, overshootFlag: false, overshoots: 0, maxOvershoot: 0,
+      stalled: false, stalls: 0, dir: 0, ext: null, reversals: 0,
+      visited: new Set(), discoverStart: null, discoverMs: 0, discovered: false, everPostAttack: false,
+    };
+    for (const p of this.pending) this.att.samples.push({ t: p.t, cn: p.cn, c: p.cn - this.targetNat, attack: true });
+    this.pending = [];
+  }
+  closeGray(a) {
+    if (a.grayStart == null) return;
+    const dur = a.lastGrayT - a.grayStart;
+    if (dur >= this.cfg.reachMs) a.holdRuns.push({ start: a.grayStart, end: a.lastGrayT, dur });
+    a.grayStart = null; a.lastGrayT = null;
+  }
+  closeBlue(a) {
+    if (a.blueStart == null) return;
+    a.longestBlue = Math.max(a.longestBlue, a.lastBlueT - a.blueStart);
+    a.blueStart = null; a.lastBlueT = null;
+  }
+  process(t, f, zoneNat, justStarted) {
+    const cfg = this.cfg, a = this.att;
+    const elapsed = t - a.t0;
+    const inAttack = elapsed < cfg.transientMs;
+    if (!f) {
+      if (a.grayStart != null && t - a.lastGrayT > cfg.holdGraceMs) this.closeGray(a);
+      if (a.blueStart != null && t - a.lastBlueT > cfg.holdGraceMs) this.closeBlue(a);
+      if (t - a.lastVoicedT > cfg.releaseMs) { this.finish(); return this.live; }
+      this.live = { ...this.live, voiced: false, holdMs: a.grayStart != null ? a.lastGrayT - a.grayStart : 0 };
+      return this.live;
+    }
+    const cn = centsBetween(f, this.natF);
+    const dt = Math.min(50, t - a.prevT);
+    a.prevT = t; a.lastVoicedT = t;
+    if (!justStarted) a.samples.push({ t, cn, c: cn - this.targetNat, attack: inAttack });
+    const zc = zoneNat - this.targetNat; // median-filtered cents relative to target
+    const inGray = Math.abs(zc) <= cfg.grayCents;
+    const inBlue = Math.abs(zc) <= cfg.blueCents;
+    a.minNat = Math.min(a.minNat, zoneNat); a.maxNat = Math.max(a.maxNat, zoneNat);
+    this.ladder.forEach(n => { if (Math.abs(zoneNat - (n.midi - this.nat.midi) * 100) <= 15) a.visited.add(n.id); });
+
+    let drift = null, stable = false, recentStd = null;
+    if (!inAttack) {
+      a.everPostAttack = true;
+      // initial stable pitch (direct-hit measurement)
+      const win = a.samples.filter(s => !s.attack && t - s.t <= cfg.stableWindowMs);
+      if (win.length >= 4) {
+        const ms = meanStd(win.map(s => s.cn));
+        recentStd = ms.std;
+        stable = ms.std <= cfg.stableStdCents;
+        if (a.initial == null && stable && t - (a.t0 + cfg.transientMs) >= cfg.stableWindowMs * 0.8) {
+          a.initial = ms.mean - this.targetNat; a.initialT = t; a.startNat = ms.mean;
+        }
+      }
+      // movement: bending detected once pitch falls clearly below where it started
+      const ref = a.startNat != null ? a.startNat : 0;
+      if (zoneNat < Math.min(ref, 0) - 20) a.bending = true;
+      // reversals with hysteresis
+      if (a.ext == null) a.ext = zoneNat;
+      if (a.dir <= 0 && zoneNat > a.ext + 15) { if (a.dir < 0) a.reversals++; a.dir = 1; a.ext = zoneNat; }
+      else if (a.dir >= 0 && zoneNat < a.ext - 15) { if (a.dir > 0) a.reversals++; a.dir = -1; a.ext = zoneNat; }
+      else a.ext = a.dir > 0 ? Math.max(a.ext, zoneNat) : a.dir < 0 ? Math.min(a.ext, zoneNat) : a.ext;
+      // gray run (hold)
+      if (inGray) { if (a.grayStart == null) a.grayStart = t; a.lastGrayT = t; }
+      else if (a.grayStart != null && t - a.lastGrayT > cfg.holdGraceMs) this.closeGray(a);
+      const holdMs = a.grayStart != null ? a.lastGrayT - a.grayStart : 0;
+      if (!a.reached && holdMs >= cfg.reachMs) { a.reached = true; a.reachedT = t; a.timeToTarget = a.grayStart - a.t0; }
+      // blue run
+      if (inBlue) { if (a.blueStart == null) a.blueStart = t; a.lastBlueT = t; if (holdMs > 0) a.blueMs += dt; }
+      else if (a.blueStart != null && t - a.lastBlueT > cfg.holdGraceMs) this.closeBlue(a);
+      // overshoot
+      if (zc < -cfg.overshootCents) {
+        if (!a.overshootFlag) { a.overshootFlag = true; a.overshoots++; }
+        a.maxOvershoot = Math.max(a.maxOvershoot, -zc);
+      } else if (zc > -cfg.grayCents) a.overshootFlag = false;
+      // stall: steady but still sharp of the target
+      const stallWin = a.samples.filter(s => !s.attack && t - s.t <= cfg.stallMs);
+      const wasStalled = a.stalled;
+      a.stalled = a.bending && !inGray && zc > cfg.grayCents && stallWin.length >= 8 && stallWin[0].t <= t - cfg.stallMs * 0.9 &&
+        meanStd(stallWin.map(s => s.cn)).std < 5;
+      if (a.stalled && !wasStalled) a.stalls++;
+      // drift within the current hold
+      if (holdMs >= 400) {
+        const hs = a.samples.filter(s => s.t >= Math.max(a.grayStart, t - 600)).map(s => ({ t: s.t, c: s.c }));
+        const sl = slopePerSec(hs);
+        if (sl > 10 && zc > cfg.blueCents) drift = 'sharp';
+        else if (sl < -10 && zc < -cfg.blueCents) drift = 'flat';
+      }
+      // Level 1 discovery: clear, sustained drop from a start near the natural note
+      if (a.startNat != null && a.startNat > -30 && zoneNat <= a.startNat - cfg.discoverDropCents) {
+        if (a.discoverStart == null) a.discoverStart = t;
+        a.discoverMs = t - a.discoverStart;
+        if (a.discoverMs >= cfg.discoverHoldMs) a.discovered = true;
+      } else a.discoverStart = null;
+      this.live = {
+        active: true, voiced: true, phase: inGray && holdMs >= cfg.reachMs ? 'hold' : 'move', elapsed,
+        f, zoneNat, zoneCents: zc, inGray, inBlue, holdMs,
+        blueRunMs: a.blueStart != null ? a.lastBlueT - a.blueStart : 0,
+        reached: a.reached, bending: a.bending, stalled: a.stalled, drift, stable, recentStd,
+        overshooting: a.overshootFlag, initial: a.initial, startNat: a.startNat,
+        discovered: a.discovered, discoverMs: a.discoverMs,
+      };
+    } else {
+      this.live = { active: true, voiced: true, phase: 'attack', elapsed, f, zoneNat, zoneCents: zc, inGray, inBlue, holdMs: 0, blueRunMs: 0 };
+    }
+    return this.live;
+  }
+  finish() {
+    const a = this.att; this.att = null; this.pending = []; this.med = [];
+    this.closeGray(a); this.closeBlue(a);
+    const dur = a.lastVoicedT - a.t0;
+    this.live = { active: false };
+    if (dur < this.cfg.minAttemptMs || !a.everPostAttack) return;
+    const holdSamples = a.samples.filter(s => !s.attack && a.holdRuns.some(r => s.t >= r.start && s.t <= r.end));
+    const hs = meanStd(holdSamples.map(s => s.c));
+    const longest = a.holdRuns.reduce((m, r) => (r.dur > m.dur ? r : m), { dur: 0 });
+    const longestSamples = holdSamples.filter(s => s.t >= longest.start && s.t <= longest.end);
+    const minC = a.minNat - this.targetNat;
+    const result = {
+      noteId: this.target.id, mode: this.mode, duration: dur,
+      reached: a.reached, timeToTarget: a.timeToTarget,
+      longestHold: longest.dur, holdMean: holdSamples.length ? hs.mean : null,
+      holdMeanAbs: holdSamples.length ? meanStd(holdSamples.map(s => Math.abs(s.c))).mean : null,
+      jitter: holdSamples.length ? hs.std : null,
+      drift: longestSamples.length >= 4 ? slopePerSec(longestSamples) : null,
+      blueMs: a.blueMs, longestBlue: a.longestBlue,
+      overshoots: a.overshoots, maxOvershoot: a.maxOvershoot,
+      undershoot: !a.reached && minC > this.cfg.grayCents, closestCents: minC > 0 ? minC : null,
+      stalls: a.stalls, reversals: a.reversals,
+      initialCents: a.initial,
+      initialHit: a.initial != null && Math.abs(a.initial) <= this.cfg.grayCents,
+      startedAboveSlid: a.initial != null && a.initial > this.cfg.grayCents && a.reached,
+      visited: this.ladder.filter(n => a.visited.has(n.id) && n.id !== this.target.id).map(n => n.pc),
+      bent: a.bending, discovered: a.discovered,
+      maxDrop: a.startNat != null && isFinite(a.minNat) ? a.minNat - a.startNat : null,
+    };
+    this.lastResult = result;
+    if (this.onFinish) this.onFinish(result);
+  }
+}
+
+function coachMessage(tr) {
+  const L = tr.live || {}, cfg = tr.cfg, tgt = tr.target;
+  if (!tgt) return '';
+  if (!L.active) {
+    if (L.outOfRange) return `That pitch is outside hole ${tgt.hole} ${tgt.dir}. Check the hole and direction.`;
+    if (tr.mode === 'direct') return `Attack ${tgt.pc} directly, without sliding down from ${tr.nat.pc}.`;
+    if (tr.mode === 'discover') return `Play ${tr.nat.desc} (${tr.nat.pc}), then try to lower the pitch.`;
+    return tgt.bend > 0 ? `Start from the natural note, ${tr.nat.pc}, then bend down to ${tgt.pc}.` : `Play ${tgt.desc} (${tgt.pc}).`;
+  }
+  if (!L.voiced) return 'Keep the note going.';
+  if (L.phase === 'attack') return 'Listening…';
+  const c = L.zoneCents, ac = Math.abs(Math.round(c));
+  if (tr.mode === 'discover') {
+    if (L.startNat != null && L.startNat < -30) return 'Start from the natural note, then lower the pitch.';
+    if (L.discovered) return 'That is a bend. Your pitch moved down.';
+    if (L.startNat != null && L.zoneNat < L.startNat - 12) return 'Good. Your pitch is beginning to move.';
+    return 'Now try to lower the pitch.';
+  }
+  if (L.inGray) {
+    if (L.drift === 'sharp') return "You're drifting sharp.";
+    if (L.drift === 'flat') return "You're drifting flat.";
+    if (L.inBlue && L.holdMs >= cfg.reachMs) return `Laser accurate: ${fmtCents(c)}`;
+    if (L.holdMs < cfg.reachMs) return 'Target reached. Hold it.';
+    if (L.holdMs > 1500) return 'Stable bend.';
+    return 'Hold it.';
+  }
+  if (c < 0) {
+    if (tgt.bend === 0) return `${ac} cents flat. Ease off the bend.`;
+    if (-c >= cfg.overshootCents) return 'You passed the target. Release the bend slightly.';
+    return `${ac} cents flat. Release slightly.`;
+  }
+  if (tgt.bend > 0 && !L.bending && L.zoneNat > -15)
+    return tr.mode === 'direct' ? `${ac} cents sharp. You started on the natural note.` : 'Good start. Now bend lower.';
+  if (L.stalled) return `Pitch stalled ${ac} cents sharp. Keep bending lower.`;
+  if (ac <= 25) return `Almost there. ${ac} cents sharp.`;
+  if (L.bending) return `Keep bending lower. ${ac} cents sharp.`;
+  return `You're ${ac} cents sharp of the target.`;
+}
+
+
+// ===================== Live detection (DETECTED state) =====================
+// Microphone pitch → hole, breath, bend. This block never reads the practice target, the lesson, or
+// any selected note. Its only inputs are audio frames and the selected harmonica key.
+const DETECT = {
+  minLevel: 0.0004,       // absolute RMS floor (≈ −68 dBFS). Nothing quieter is trusted, whatever the room
+  floorInit: 0.001,       // starting guess for the room's noise floor, replaced within a fraction of a second
+  floorFall: 0.25,        // noise-floor estimate falls fast (a quiet room is recognised at once)...
+  floorRise: 0.015,       // ...and rises slowly (≈1 s), so a breath or a decaying note can't drag it up
+  snrOnset: 2.0,          // a NEW note must be ≥ this × the noise floor (≈ +6 dB)
+  snrHold: 1.4,           // a note already being tracked may continue down to ≈ +3 dB (soft decays, bends)
+  snrMid: 3.5, snrLoud: 8,// level bands that set how much pitch clarity is required...
+  confStrong: 0.88,       // ...near the floor, only a very clear periodic signal counts
+  confMid: 0.80,
+  confLoud: 0.72,         // well above the floor, a less perfect tone is still accepted
+  holdConfRelax: 0.06,    // clarity relaxation while continuing a note that is already tracked
+  confirmMs: 45,          // a new note must agree for this long...
+  confirmMinFrames: 3,    // ...and over at least this many frames (≈ 50 ms at 60 fps)
+  pendingMaxAgeMs: 160,
+  onsetSpreadCents: 30,   // confirming frames must agree this closely: harmonica tones are steady
+  jumpCents: 80,          // a frame-to-frame change bigger than this is a jump to another hole, not a bend
+  hysteresisCents: 20,    // stay on the current reed until the pitch is this far past the halfway point
+  bendFloorSlackCents: 30,// how far below a reed's deepest bend still counts as that reed
+  continuityMs: 90,       // a gap longer than this breaks voiced continuity
+  breathGapMs: 60,        // no gap longer than this means the breath direction cannot have reversed
+  medianFrames: 5,        // display smoothing (≈ 80 ms)
+  releaseMs: 300,         // keep the last note visible, dimmed, this long after the sound stops
+  plausibleCents: 50,     // a new note must be within this of a pitch the harmonica can actually make
+};
+
+const isOver = e => e.kind === 'overblow' || e.kind === 'overdraw';
+const reedKeyOf = e => e.hole + e.dir + (isOver(e) ? 'X' : '');
+const medianOf = a => { const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
+
+// Every pitch the selected harmonica can produce, and every hole/breath that produces it.
+// Built from buildHarp(), so every key in KEYS is handled the same way (MIDI numbers throughout).
+function buildDetectionMap(harp) {
+  const entries = [];
+  const add = (n, kind, natMidi, maxBend) =>
+    entries.push({ ...n, kind, natMidi, maxBend, prio: kind === 'natural' ? 0 : kind === 'bend' ? 1 : 2 });
+  for (const h of harp.holes) {
+    add(h.blow, 'natural', h.blow.midi, h.blowBends.length);
+    add(h.draw, 'natural', h.draw.midi, h.drawBends.length);
+    h.blowBends.forEach(n => add(n, 'bend', h.blow.midi, h.blowBends.length));
+    h.drawBends.forEach(n => add(n, 'bend', h.draw.midi, h.drawBends.length));
+  }
+  // Overblows (holes 1–6, a half step above the draw note) and overdraws (holes 7–10, a half step above
+  // the blow note), included only where no natural note or conventional bend already makes that pitch.
+  const taken = new Set(entries.map(e => e.midi));
+  for (const h of harp.holes) {
+    const ob = h.hole <= 6, midi = (ob ? h.draw.midi : h.blow.midi) + 1;
+    if (taken.has(midi)) continue;
+    const kind = ob ? 'overblow' : 'overdraw', dir = ob ? 'blow' : 'draw';
+    add({ id: h.hole + (ob ? 'OB' : 'OD'), hole: h.hole, dir, bend: 0, midi, freq: midiToFreq(midi),
+          name: noteName(midi), pc: pcName(midi), tab: (ob ? '+' : '−') + h.hole + '°', desc: `${h.hole} ${kind}` },
+        kind, midi, 0);
+    taken.add(midi);
+  }
+  entries.sort((a, b) => a.midi - b.midi || a.prio - b.prio || a.hole - b.hole);
+  return { entries, lo: entries[0].midi, hi: entries[entries.length - 1].midi };
+}
+
+function nearestGroup(map, midiF) {
+  let best = null, bd = Infinity;
+  for (const e of map.entries) { const d = Math.abs(midiF - e.midi); if (d < bd) { bd = d; best = e.midi; } }
+  if (best == null) return null;
+  return { midi: best, cents: (midiF - best) * 100, entries: map.entries.filter(e => e.midi === best) };
+}
+
+// The pitch span one physical reed can cover, in cents relative to its natural note.
+function reedRange(e, cfg) {
+  return {
+    top: 50 + cfg.hysteresisCents,
+    bottom: e.maxBend > 0 ? -(e.maxBend * 100) - cfg.bendFloorSlackCents : -(50 + cfg.hysteresisCents),
+  };
+}
+function inReedRange(e, midiF, cfg) {
+  const r = reedRange(e, cfg), x = (midiF - e.natMidi) * 100;
+  return x <= r.top && x >= r.bottom;
+}
+
+// Bend depth from the actual pitch, relative to this reed's natural note.
+function bendInfo(e, midiF) {
+  if (isOver(e)) return { cents: 0, steps: 0, label: e.kind === 'overblow' ? 'Overblow' : 'Overdraw' };
+  const cents = Math.max(0, (e.natMidi - midiF) * 100);
+  if (cents < 25) return { cents, steps: 0, label: 'Natural, no bend' };
+  if (e.maxBend === 0) return { cents, steps: 0, label: 'Slightly flat (this reed does not bend)' };
+  const k = Math.round(cents / 100);
+  if (k >= 1 && Math.abs(cents - k * 100) <= 25) {
+    const w = STEP_WORDS[Math.min(k, 3)];
+    return { cents, steps: k, label: w[0].toUpperCase() + w.slice(1) + ' bend' };
+  }
+  if (cents < 75) return { cents, steps: 0.5, label: 'Quarter-tone bend' };
+  const lo = Math.floor(cents / 100);
+  return { cents, steps: cents / 100, label: `Bending, between ${STEP_WORDS[lo]} and ${STEP_WORDS[lo + 1] || 'deeper'}` };
+}
+
+// One audio frame → level and pitch. Pitch detection runs on every frame; the level decision is made
+// afterwards by HoleDetector, so a quiet but clear note is not thrown away before it is even measured.
+function analyzeFrame(buf, sr, detectFn, t) {
+  const rms = rmsOf(buf);
+  const r = rms > 0 ? detectFn(buf, sr) : null;
+  return { t, rms, freq: r ? r.freq : null, conf: r ? r.conf : 0 };
+}
+
+class HoleDetector {
+  constructor(cfg) { this.cfg = cfg; this.floor = cfg.floorInit; this.map = null; this.octStart = null; this.clear(); this.state = { status: 'idle' }; }
+  setHarp(harp) { this.map = buildDetectionMap(harp); this.clear(); }
+  clear() { this.cur = null; this.pend = []; this.med = []; this.lastAcceptT = -Infinity; this.lastMidiF = null; }
+  threshold(tracking) { const c = this.cfg; return Math.max(c.minLevel, this.floor * (tracking ? c.snrHold : c.snrOnset)); }
+  // No audio analysed this frame (microphone off, or BendLab's own reference tone is playing).
+  pause(t, why) {
+    this.clear();
+    return (this.state = { t, status: 'idle', accepted: false, reason: why, rms: 0, conf: 0, floor: this.floor, threshold: this.threshold(false), pending: 0 });
+  }
+  inCur(midiF) { return !!this.cur && this.cur.cands.some(e => inReedRange(e, midiF, this.cfg)); }
+
+  feed(fr) {
+    const c = this.cfg, t = fr.t;
+    const tracking = !!this.cur && t - this.lastAcceptT <= c.continuityMs;
+    const thr = this.threshold(tracking);
+    const snr = fr.rms / Math.max(this.floor, 1e-7);
+    let freq = fr.freq, reason = null, need = null, octave = 0, mF = null;
+
+    // 1. Is this frame a usable tone? Level, clarity and plausibility are judged separately.
+    if (fr.rms < c.minLevel) reason = 'rejected: below absolute minimum level';
+    else if (fr.rms < thr) reason = 'rejected: below noise threshold';
+    else if (!freq) reason = 'rejected: no periodic pitch in this frame';
+    else {
+      need = (snr >= c.snrLoud ? c.confLoud : snr >= c.snrMid ? c.confMid : c.confStrong) - (tracking ? c.holdConfRelax : 0);
+      if (fr.conf < need) reason = `rejected: pitch clarity ${fr.conf.toFixed(2)} below ${need.toFixed(2)} needed at this level`;
+    }
+    if (!reason) {
+      mF = freqToMidi(freq);
+      // Octave repair, only for a note already being tracked and only briefly: a momentary octave error
+      // is corrected, but an octave shift that persists is a real jump (hole 1 → hole 4) and is accepted.
+      if (tracking && this.lastMidiF != null) {
+        const d = (mF - this.lastMidiF) * 100;
+        const oct = Math.abs(d + 1200) < c.jumpCents ? 1 : Math.abs(d - 1200) < c.jumpCents ? -1 : 0;
+        if (oct) {
+          if (this.octStart == null) this.octStart = t;
+          if (t - this.octStart <= c.confirmMs) { mF += 12 * oct; freq *= Math.pow(2, oct); octave = oct; }
+        } else this.octStart = null;
+      } else this.octStart = null;
+      const g = nearestGroup(this.map, mF);
+      if (!g || (Math.abs(g.cents) > c.plausibleCents && !(tracking && this.inCur(mF))))
+        reason = 'rejected: not a pitch this harmonica can play';
+    }
+
+    // 2. Learn the room from frames that carry no usable tone.
+    if (reason) {
+      const r = Math.max(fr.rms, 1e-6);
+      this.floor += (r - this.floor) * (r < this.floor ? c.floorFall : c.floorRise);
+    }
+
+    // 3. Map the pitch to a reed.
+    let note = null;
+    if (!reason) {
+      const contiguous = t - this.lastAcceptT <= c.continuityMs;
+      const step = this.lastMidiF == null || !contiguous ? Infinity : Math.abs(mF - this.lastMidiF) * 100;
+      this.lastAcceptT = t; this.lastMidiF = mF;
+      if (this.cur && contiguous && step <= c.jumpCents && this.inCur(mF)) {
+        this.pend = [];              // same reed, smooth motion: a bend, a release, vibrato. Follow it.
+        this.follow(mF, t);
+        note = 'accepted: following ' + this.cur.entry.hole + ' ' + this.cur.entry.dir;
+      } else {
+        this.pend = this.pend.filter(p => t - p.t <= c.pendingMaxAgeMs && Math.abs(p.mF - mF) * 100 <= c.onsetSpreadCents);
+        this.pend.push({ t, mF });
+        if (this.pend.length >= c.confirmMinFrames && t - this.pend[0].t >= c.confirmMs) { this.adopt(t); note = 'accepted: new note confirmed'; }
+        else note = `accepted: confirming new note (${this.pend.length} frames)`;
+      }
+    }
+    if (this.cur && t - this.cur.lastT > c.releaseMs) this.cur = null;
+
+    const cur = this.cur;
+    const st = {
+      t, rms: fr.rms, floor: this.floor, threshold: thr, snr, conf: fr.conf, need,
+      rawFreq: fr.freq, freq: reason ? null : freq, accepted: !reason, octave,
+      reason: reason || note, pending: this.pend.length,
+      status: !cur ? (this.pend.length ? 'confirming' : 'idle') : (t - cur.lastT <= c.continuityMs ? 'active' : 'release'),
+    };
+    if (cur) {
+      const e = cur.entry, sm = cur.midiF, sp = this.med.map(m => m * 100);
+      Object.assign(st, {
+        midiF: sm, smoothFreq: midiToFreq(sm), hole: e.hole, dir: e.dir, kind: cur.step.kind, entry: cur.step,
+        natMidi: e.natMidi, cands: cur.cands, ambiguous: cur.ambiguous, resolvedBy: cur.resolvedBy,
+        bend: bendInfo(e, sm), centsOffset: (sm - cur.step.midi) * 100,
+        spread: sp.length > 1 ? meanStd(sp).std : null,
+      });
+    }
+    return (this.state = st);
+  }
+
+  adopt(t) {
+    const c = this.cfg, prev = this.cur;
+    const mF = medianOf(this.pend.map(p => p.mF));
+    const g = nearestGroup(this.map, mF);
+    let cands = g.entries, resolvedBy = null;
+    // Several reeds produce this exact pitch (e.g. 2 draw and 3 blow). Pitch cannot tell them apart.
+    // Real evidence only: breath direction cannot reverse without the sound stopping.
+    if (cands.length > 1 && prev && !prev.ambiguous && this.pend[0].t - prev.lastT <= c.breathGapMs) {
+      const same = cands.filter(e => e.dir === prev.entry.dir);
+      if (same.length === 1) { cands = same; resolvedBy = `no break in the sound since ${prev.entry.hole} ${prev.entry.dir}, so still ${prev.entry.dir}ing`; }
+    }
+    this.cur = { cands, entry: cands[0], ambiguous: cands.length > 1, resolvedBy, lastT: t, midiF: mF, step: cands[0] };
+    this.med = this.pend.map(p => p.mF).slice(-c.medianFrames);
+    this.pend = [];
+    this.follow(null, t);
+  }
+
+  follow(mF, t) {
+    const c = this.cfg, cur = this.cur;
+    if (mF != null) { this.med.push(mF); if (this.med.length > c.medianFrames) this.med.shift(); }
+    cur.lastT = t;
+    const sm = medianOf(this.med);
+    cur.midiF = sm;
+    if (cur.ambiguous) { // the pitch has glided somewhere only one of the candidate reeds can reach
+      const fit = cur.cands.filter(e => inReedRange(e, sm, c));
+      if (fit.length === 1) {
+        cur.cands = fit; cur.entry = fit[0]; cur.ambiguous = false;
+        cur.resolvedBy = `the pitch moved to ${noteName(Math.round(sm))}, which only ${fit[0].hole} ${fit[0].dir} can reach`;
+      }
+    }
+    // nearest step on this reed's ladder: names the note and lights the matching chip
+    const rk = reedKeyOf(cur.entry);
+    let best = cur.entry, bd = Infinity;
+    for (const e of this.map.entries) if (reedKeyOf(e) === rk) { const d = Math.abs(sm - e.midi); if (d < bd) { bd = d; best = e; } }
+    cur.step = best;
+  }
+}
+
+// ===================== BendLab app (DOM, audio, lessons) =====================
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// ---------- persistence: this browser, plus the viewer's private account storage when available ----------
+const Store = {
+  KEY: 'bendlab.v1',
+  data: null,
+  defaults() { return { v: 1, updatedAt: 0, stats: {}, levels: {}, settings: { key: 'C', gray: 10, blue: 3, transient: 150, reach: 250, minLevel: 0.0004, mode: 'free', timbre: 'sine', volume: 0.5, target: '4D1' } }; },
+  load() {
+    this.data = this.defaults();
+    try { const s = localStorage.getItem(this.KEY); if (s) this.merge(JSON.parse(s)); } catch (e) {}
+  },
+  merge(d) {
+    if (!d || typeof d !== 'object') return;
+    const base = this.defaults();
+    this.data = { ...base, ...d, settings: { ...base.settings, ...(d.settings || {}) }, stats: d.stats || {}, levels: d.levels || {} };
+    delete this.data.settings.gate; // the old fixed 0.006 gate rejected soft notes; it is replaced by adaptive detection
+  },
+  save() {
+    this.data.updatedAt = Date.now();
+    try { localStorage.setItem(this.KEY, JSON.stringify(this.data)); } catch (e) {}
+    clearTimeout(this.t); this.t = setTimeout(() => this.push(), 2500);
+  },
+  async push() { if (!this.ref) return; try { await this.ref.set(JSON.parse(JSON.stringify(this.data))); } catch (e) {} },
+  async initRemote() {
+    try {
+      if (!window.claude || !window.claude.use) return;
+      const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+      if (!db || !user) return;
+      const id = await user.id(); if (!id) return;
+      this.ref = db.doc(`data/users/${id}/bendlab/progress`);
+      const snap = await this.ref.get();
+      if (snap.exists) {
+        const d = snap.data();
+        if (d && (d.updatedAt || 0) > (this.data.updatedAt || 0)) { this.merge(d); try { localStorage.setItem(this.KEY, JSON.stringify(this.data)); } catch (e) {} applySettings(); rebuildHarp(); renderProgress(); renderLevels(); }
+      } else this.push();
+      $('syncTxt').textContent = 'Progress is saved to your account and this browser.';
+    } catch (e) {}
+  },
+};
+
+// ---------- state ----------
+let harp, target, practiceTargetId = '4D1', lesson = null, view = 'train';
+const tracker = new Tracker(CONFIG);
+const detect = createDetector(4096);
+const audio = { ctx: null, analyser: null, stream: null, src: null, buf: null, on: false };
+let hist = [], disp = null, lastRaw = null, rmsSmooth = 0, prevActive = false;
+// DETECTED state: written only from the microphone, via holeDet. Never from target/lesson state.
+const holeDet = new HoleDetector(DETECT);
+let det = { status: 'idle' }, mode = 'free', freeHist = [], freeReed = null, hitIds = '', dbgT = 0;
+
+function applySettings() {
+  const s = Store.data.settings;
+  CONFIG.grayCents = s.gray; CONFIG.blueCents = Math.min(s.blue, s.gray - 1);
+  CONFIG.transientMs = s.transient; CONFIG.reachMs = s.reach; DETECT.minLevel = s.minLevel;
+  $('sGray').value = s.gray; $('sBlue').value = CONFIG.blueCents; $('sTrans').value = s.transient;
+  $('sReach').value = s.reach; $('sMin').value = s.minLevel; $('vol').value = s.volume; $('timbre').value = s.timbre;
+  $('keySel').value = s.key;
+}
+
+// ---------- reference tone generator (Web Audio) ----------
+function ensureCtx() {
+  if (!audio.ctx) audio.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audio.ctx.state === 'suspended') audio.ctx.resume();
+  return audio.ctx;
+}
+const Tone = {
+  voice: null, blockUntil: 0, timer: null, wave: null,
+  start(freq) {
+    const ctx = ensureCtx(); this.stop(true);
+    const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
+    if (Store.data.settings.timbre === 'reed') {
+      if (!this.wave) { // harmonic series only, so the fundamental stays exactly at `freq`
+        const amps = [0, 1, .72, .5, .38, .3, .2, .14, .1, .07, .05];
+        this.wave = ctx.createPeriodicWave(new Float32Array(amps.length), new Float32Array(amps));
+      }
+      o.setPeriodicWave(this.wave);
+    } else o.type = 'sine';
+    o.frequency.setValueAtTime(freq, t);
+    const vol = Store.data.settings.volume * (Store.data.settings.timbre === 'reed' ? 0.35 : 0.5);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.015);
+    o.connect(g).connect(ctx.destination); o.start(t);
+    this.voice = { o, g }; this.blockUntil = Infinity;
+    tracker.abort();
+  },
+  stopAfter(ms) { clearTimeout(this.timer); this.timer = setTimeout(() => this.stop(), ms); },
+  stop(immediate) {
+    clearTimeout(this.timer);
+    if (!this.voice) return;
+    const { o, g } = this.voice, t = audio.ctx.currentTime;
+    g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + (immediate ? 0.01 : 0.06));
+    o.stop(t + 0.1); this.voice = null;
+    this.blockUntil = performance.now() + 300; // let the speaker and room settle before listening again
+  },
+  play(freq, ms = 1400) { this.start(freq); this.stopAfter(ms); },
+  blocking(now) { return !!this.voice || now < this.blockUntil; },
+};
+
+// ---------- microphone ----------
+function showNotice(msg) { const n = $('micNotice'); n.textContent = msg; n.classList.toggle('on', !!msg); }
+async function toggleMic() {
+  if (audio.on) { stopMic(); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showNotice('Real-time training needs microphone access, and this page cannot request it here. Open BendLab over https in a browser that allows microphone access.');
+    return;
+  }
+  const ctx = ensureCtx();
+  // Ask for a raw instrument signal: speech processing (echo cancellation, noise suppression, automatic
+  // gain) distorts or ducks sustained reed tones. 'ideal' lets browsers that can't comply still open the
+  // mic; what was actually granted is read back below and shown in the debug view.
+  const want = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 };
+  const ideal = {}; for (const k in want) ideal[k] = { ideal: want[k] };
+  try {
+    try { audio.stream = await navigator.mediaDevices.getUserMedia({ audio: ideal }); }
+    catch (e) {
+      if (e && (e.name === 'OverconstrainedError' || e.name === 'TypeError')) audio.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      else throw e;
+    }
+  } catch (e) {
+    const name = e && e.name;
+    showNotice(name === 'NotAllowedError' || name === 'SecurityError'
+      ? 'Microphone access was blocked. BendLab needs the microphone to hear your harmonica. Allow microphone access for this page in your browser, then tap Start microphone again.'
+      : name === 'NotFoundError' ? 'No microphone was found. Connect one, then tap Start microphone.'
+      : 'The microphone could not start (' + (name || 'unknown error') + ').');
+    return;
+  }
+  await ctx.resume();
+  audio.src = ctx.createMediaStreamSource(audio.stream);
+  // High-pass below the lowest harmonica note: removes rumble, handling and breath thumps that raise the
+  // level without carrying pitch, so the noise floor stays low and soft notes stand out.
+  audio.hp = ctx.createBiquadFilter(); audio.hp.type = 'highpass'; audio.hp.frequency.value = 80; audio.hp.Q.value = 0.707;
+  audio.analyser = ctx.createAnalyser(); audio.analyser.fftSize = 2048;
+  audio.src.connect(audio.hp).connect(audio.analyser);
+  audio.buf = new Float32Array(audio.analyser.fftSize);
+  const tr = audio.stream.getAudioTracks()[0], got = tr && tr.getSettings ? tr.getSettings() : {};
+  audio.micReport = Object.keys(want).map(k => `${k}: ${got[k] === undefined ? 'not reported' : got[k] === want[k] ? got[k] + ' (as requested)' : got[k] + ' (browser did not honor ' + want[k] + ')'}`).join('\n')
+    + `\nsampleRate: ${ctx.sampleRate} Hz, analysis window ${(2048 / ctx.sampleRate * 1000).toFixed(0)} ms`;
+  holeDet.clear();
+  audio.on = true;
+  showNotice(got.autoGainControl === true ? 'This browser kept automatic gain control on. Detection still works, but the level will pump on soft notes.' : '');
+  $('micBtn').textContent = 'Stop microphone'; $('micBtn').classList.add('live'); $('micBtn').classList.remove('primary');
+}
+function stopMic() {
+  if (audio.stream) audio.stream.getTracks().forEach(t => t.stop());
+  if (audio.src) audio.src.disconnect();
+  if (audio.hp) audio.hp.disconnect();
+  audio.on = false; audio.analyser = null; tracker.abort();
+  $('micBtn').textContent = 'Start microphone'; $('micBtn').classList.remove('live'); $('micBtn').classList.add('primary');
+  showNotice('Microphone is off. Real-time training requires microphone access.');
+}
+
+// ---------- target selection ----------
+function setTarget(noteId, mode) {
+  const n = harp.notes[noteId] || harp.notes['4D1'];
+  target = n;
+  tracker.setTarget(n, ladderFor(harp, n), mode || (lesson ? lesson.step.mode : ($('directMode').checked ? 'direct' : 'sustain')));
+  hist = []; disp = null;
+  $('tTab').textContent = n.tab; $('tName').textContent = n.name; $('tHz').textContent = n.freq.toFixed(2) + ' Hz';
+  const lad = ladderFor(harp, n);
+  $('tDesc').textContent = n.desc[0].toUpperCase() + n.desc.slice(1) + '. Path on this hole: ' + lad.map(x => x.pc).join(' → ');
+  document.querySelectorAll('.chip').forEach(c => { c.classList.toggle('sel', c.dataset.id === n.id); c.classList.toggle('lad', lad.some(x => x.id === c.dataset.id)); });
+  updateHoldGoal();
+}
+function rebuildHarp() {
+  harp = buildHarp(Store.data.settings.key);
+  holeDet.setHarp(harp); freeHist = []; hitIds = '';
+  const el = $('harp'); el.innerHTML = '';
+  harp.holes.forEach(h => {
+    const col = document.createElement('div'); col.className = 'col';
+    const cell = (n, row) => {
+      const b = document.createElement('button');
+      b.className = 'chip' + (n.bend ? ' bend' : ''); b.dataset.id = n.id; b.textContent = n.pc; b.style.gridRow = row;
+      b.setAttribute('aria-label', `${n.desc}, ${n.name}, ${n.freq.toFixed(2)} hertz`);
+      bindNote(b, n); col.appendChild(b);
+    };
+    h.blowBends.forEach((n, i) => cell(n, String(2 - i))); // deepest blow bend on top
+    cell(h.blow, '3');
+    const no = document.createElement('div'); no.className = 'holeno'; no.textContent = h.hole; no.style.gridRow = '4'; col.appendChild(no);
+    cell(h.draw, '5');
+    h.drawBends.forEach((n, i) => cell(n, String(6 + i)));
+    el.appendChild(col);
+  });
+  setTarget(lesson ? lesson.step.note : practiceTargetId);
+}
+function bindNote(b, n) {
+  let pressT = 0;
+  b.addEventListener('pointerdown', e => {
+    if (e.button > 0) return;
+    pressT = performance.now();
+    choose(n.id); Tone.start(n.freq);
+  });
+  const release = () => {
+    if (!pressT) return;
+    const held = performance.now() - pressT; pressT = 0;
+    if (held < 350) Tone.stopAfter(1400 - held); else Tone.stop();
+  };
+  b.addEventListener('pointerup', release); b.addEventListener('pointercancel', release); b.addEventListener('pointerleave', release);
+  b.addEventListener('click', e => { if (e.detail === 0) { choose(n.id); Tone.play(n.freq); } }); // keyboard
+}
+function choose(id) {
+  if (lesson) exitLesson();
+  setMode('target'); // tapping a note means "practice this": it becomes the TARGET, shown separately
+  practiceTargetId = id; Store.data.settings.target = id; Store.save();
+  setTarget(id);
+}
+
+// ---------- mode: Free play (detection only) vs Target practice (detection + a separate target) ----------
+function setMode(m) {
+  if (m === 'free' && lesson) exitLesson();
+  mode = m; Store.data.settings.mode = m; Store.save();
+  $('stage').dataset.mode = m;
+  $('modeFree').setAttribute('aria-pressed', m === 'free'); $('modeTarget').setAttribute('aria-pressed', m === 'target');
+  tracker.abort(); hist = []; disp = null; freeHist = [];
+  $('summary').hidden = true;
+}
+
+const dirWord = d => d === 'blow' ? 'BLOW' : 'DRAW';
+function renderDetected(D) {
+  const el = $('det'), on = D.hole != null;
+  el.classList.toggle('on', on && D.status === 'active'); el.classList.toggle('dim', on && D.status === 'release');
+  $('detStatus').textContent = !audio.on ? 'Microphone off' : Tone.blocking(performance.now()) ? 'Paused while the reference plays'
+    : D.status === 'active' ? 'Hearing it now' : D.status === 'release' ? 'Last note heard' : D.status === 'confirming' ? 'Confirming…' : 'Listening… play any hole';
+  const dirEl = $('detDir');
+  if (!on) {
+    $('detHole').textContent = '—'; $('detNote').textContent = '—'; dirEl.textContent = '—'; dirEl.className = 'det-dir';
+    $('detAmb').hidden = true; $('detBend').textContent = '—'; $('detCents').textContent = '—';
+  } else if (D.ambiguous) {
+    const a = D.cands.map(e => `${e.hole} ${e.dir}`);
+    $('detHole').textContent = D.cands.map(e => e.hole).join('/'); dirEl.textContent = D.cands.map(e => dirWord(e.dir)).join(' or '); dirEl.className = 'det-dir amb';
+    $('detNote').textContent = D.entry.name;
+    $('detAmb').hidden = false; $('detAmb').textContent = `${a.join(' and ')} make the same pitch (${D.entry.name}). Sound alone can't tell which one you're playing.`;
+    $('detBend').textContent = 'None'; $('detCents').textContent = fmtCents(D.centsOffset);
+  } else {
+    $('detHole').textContent = D.hole; dirEl.textContent = dirWord(D.dir); dirEl.className = 'det-dir ' + D.dir;
+    $('detNote').textContent = D.entry.name;
+    $('detAmb').hidden = true;
+    $('detBend').textContent = D.bend.cents >= 25 && !D.kind.startsWith('over') ? `${D.bend.label}, −${Math.round(D.bend.cents)}¢` : D.bend.label;
+    $('detCents').textContent = fmtCents(D.centsOffset);
+  }
+  const shownF = on ? D.smoothFreq : D.rawFreq;
+  $('detFreq').textContent = shownF ? shownF.toFixed(1) + ' Hz' : '—';
+  $('detConf').textContent = audio.on && D.rawFreq ? Math.round(D.conf * 100) + '%' : '—';
+  // light the detected note(s) on the harmonica map
+  const ids = on ? (D.ambiguous ? D.cands.map(e => e.id) : [D.entry.id]).join(',') : '';
+  if (ids !== hitIds) {
+    hitIds = ids; const set = new Set(ids ? ids.split(',') : []);
+    document.querySelectorAll('.chip').forEach(c => { const h = set.has(c.dataset.id); c.classList.toggle('hit', h); c.classList.toggle('d', h && c.dataset.id.includes('D')); });
+  }
+}
+function freeCoach(D) {
+  if (!audio.on) return 'Start the microphone. BendLab will show which hole you are playing.';
+  if (Tone.blocking(performance.now())) return 'Listen to the reference.';
+  if (D.hole == null) return D.rawFreq && !D.accepted && /clarity|threshold/.test(D.reason) ? 'Hearing something, but not clearly enough to call it a note.' : 'Play any hole.';
+  if (D.ambiguous) return `${D.entry.name}: hole ${D.cands[0].hole} ${D.cands[0].dir} or hole ${D.cands[1].hole} ${D.cands[1].dir}.`;
+  const where = `Hole ${D.hole} ${D.dir}`;
+  if (D.kind === 'overblow' || D.kind === 'overdraw') return `${where}: ${D.kind}, ${D.entry.name}.`;
+  if (D.bend.cents < 25) return `${where}, ${D.entry.name}.`;
+  return `${where}, ${D.bend.label.toLowerCase()} to ${D.entry.name} (${Math.round(D.bend.cents)}¢ below ${noteName(D.natMidi)}).`;
+}
+function renderDebug(D, now) {
+  if (!$('dbg').open || now - dbgT < 100) return; dbgT = now;
+  const f = x => x == null ? '—' : x;
+  const db = x => x > 0 ? (20 * Math.log10(x)).toFixed(1) + ' dBFS' : '—';
+  $('dbgPre').textContent = [
+    `mode: ${mode}   key: ${harp.key.name}   status: ${D.status}`,
+    `frame: ${D.reason || '—'}`,
+    `raw frequency: ${D.rawFreq ? D.rawFreq.toFixed(2) + ' Hz' : '—'}${D.octave ? '  (octave repaired ×' + Math.pow(2, D.octave) + ')' : ''}`,
+    `smoothed frequency: ${D.smoothFreq ? D.smoothFreq.toFixed(2) + ' Hz' : '—'}`,
+    `input level (RMS): ${D.rms != null ? D.rms.toFixed(5) : '—'}  (${db(D.rms)})`,
+    `noise floor estimate: ${D.floor != null ? D.floor.toFixed(5) : '—'}  (${db(D.floor)})`,
+    `effective threshold: ${D.threshold != null ? D.threshold.toFixed(5) : '—'}  (${db(D.threshold)})   level ÷ floor: ${D.snr != null ? D.snr.toFixed(1) : '—'}`,
+    `pitch clarity: ${D.rawFreq ? D.conf.toFixed(3) : '—'}   needed: ${D.need != null ? D.need.toFixed(2) : '—'}`,
+    `MIDI: ${D.midiF != null ? D.midiF.toFixed(2) : D.rawFreq ? freqToMidi(D.rawFreq).toFixed(2) + ' (raw)' : '—'}   cents offset: ${D.centsOffset != null ? D.centsOffset.toFixed(1) : '—'}   spread: ${D.spread != null ? D.spread.toFixed(1) + '¢' : '—'}`,
+    `detected: ${D.hole != null ? (D.ambiguous ? D.cands.map(e => e.hole + ' ' + e.dir).join(' OR ') : D.hole + ' ' + D.dir) + '  ' + D.entry.id + ' ' + D.entry.name : '—'}`,
+    `bend: ${D.bend ? D.bend.label + ' (' + D.bend.cents.toFixed(0) + '¢ below natural)' : '—'}`,
+    `ambiguity resolved by: ${f(D.resolvedBy)}`,
+    `confirming frames: ${f(D.pending)}`,
+    `target (separate): ${mode === 'target' ? target.tab + ' ' + target.name : 'none in Free play'}`,
+    '', 'microphone:', audio.micReport || 'not started',
+  ].join('\n');
+}
+
+// ---------- lessons ----------
+const TECH = [
+  'Get a clean single note first. A bend is much harder on a blurry chord.',
+  'Keep the breath gentle and steady. Pulling harder does not lower the pitch.',
+  'Many players find it helps to shape a vowel inside the mouth, moving from "ee" toward "oo", with the tongue drawing back and down.',
+  'Try a slightly lower jaw and a more open throat, as if saying "k" then "oh" while drawing.',
+  'Make small changes and watch the meter. The goal is to connect a feeling in your mouth to a movement on the screen.',
+];
+const LEVELS = [
+  { n: 1, title: 'Discover the bend', goal: 'Play 4 draw, then make the pitch move down. It does not need to be accurate yet.',
+    steps: () => [{ note: '4D', mode: 'discover', req: { type: 'discover' }, reps: 3 }] },
+  { n: 2, title: 'Reach the target', goal: 'Bend 4 draw down a half step and settle inside the gray zone.',
+    steps: () => [{ note: '4D1', mode: 'sustain', req: { type: 'hold', ms: CONFIG.reachMs }, reps: 3, ref: true }] },
+  { n: 3, title: 'Hold the bend', goal: 'Stay inside the gray zone. Leaving it resets the timer.',
+    steps: () => [500, 1000, 2000, 3000, 5000].map(ms => ({ note: '4D1', mode: 'sustain', req: { type: 'hold', ms }, reps: 1, ref: true })) },
+  { n: 4, title: 'Hit the bend directly', goal: 'Listen, then start the note already bent. Your first stable pitch after the attack is measured.',
+    steps: () => [{ note: '4D1', mode: 'direct', req: { type: 'direct' }, reps: 3, ref: true }] },
+  { n: 5, title: 'Precision', goal: 'Hold the bend inside the blue laser zone.',
+    steps: () => [{ note: '4D1', mode: 'sustain', req: { type: 'blue', ms: 750 }, reps: 2, ref: true }] },
+  { n: 6, title: 'Multiple bends', goal: 'Hit each bend depth on holes 3 and 2 on purpose, rather than bending as far as possible.',
+    steps: () => ['3D1', '3D2', '3D3', '2D1', '2D2'].map(id => ({ note: id, mode: 'sustain', req: { type: 'hold', ms: 1000 }, reps: 1, ref: true })) },
+  { n: 7, title: 'Half-step control', goal: 'Move between neighboring bends a half step apart and stop exactly on each one.',
+    steps: () => ['3D1', '3D2', '3D1', '3D3', '3D2', '2D1', '2D2', '2D1'].map(id => ({ note: id, mode: 'sustain', req: { type: 'hold', ms: 750 }, reps: 1, ref: true })) },
+  { n: 8, title: 'Full bend mastery', goal: 'Every conventional bend on this harmonica, in random order. Listen, then reproduce it.',
+    steps: () => allBends(harp).map(n => n.id).sort(() => Math.random() - 0.5).map(id => ({ note: id, mode: 'sustain', req: { type: 'hold', ms: 1000 }, reps: 1, ref: true })) },
+];
+const reqText = r => r.type === 'discover' ? 'Lower the pitch 40¢ or more' : r.type === 'hold' ? `Hold ${(r.ms / 1000).toFixed(r.ms < 1000 ? 2 : 1)} s in gray`
+  : r.type === 'blue' ? `Hold ${(r.ms / 1000).toFixed(2)} s in blue` : 'First stable pitch in gray';
+
+function renderLevels() {
+  const done = Store.data.levels;
+  const next = LEVELS.find(l => !done[l.n]);
+  $('levelList').innerHTML = `<p class="lead">Work through the levels in order. Each builds on the last.${next ? ` Next up: level ${next.n}.` : ' All levels complete.'}</p><ol class="levels">` +
+    LEVELS.map(l => `<li><button data-lvl="${l.n}"><span class="num">${l.n}</span><span><span class="t">${l.title}</span><span class="g">${l.goal}</span></span><span class="done">${done[l.n] ? 'Done' : ''}</span></button></li>`).join('') + '</ol>';
+  $('levelList').querySelectorAll('button').forEach(b => b.onclick = () => startLevel(+b.dataset.lvl));
+}
+function startLevel(n) {
+  const lv = LEVELS.find(l => l.n === n);
+  lesson = { lv, steps: lv.steps(), i: 0, reps: 0, attemptDone: false, stepDone: [], flash: '', flashCls: '' };
+  $('levelList').hidden = true; $('lessonPanel').hidden = false;
+  setMode('target');
+  enterStep();
+}
+function enterStep() {
+  lesson.step = lesson.steps[lesson.i]; lesson.reps = 0; lesson.attemptDone = false;
+  setTarget(lesson.step.note, lesson.step.mode);
+  renderLesson();
+  if (lesson.step.ref) setTimeout(() => { if (lesson) Tone.play(target.freq); }, 350);
+}
+function renderLesson() {
+  const L = lesson, s = L.step, t = harp.notes[s.note];
+  $('lessonPanel').innerHTML = `<div class="lesson"><h3>Level ${L.lv.n}: ${L.lv.title}</h3><p class="lead">${L.lv.goal}</p>
+    <div class="steps">${L.steps.map((st, i) => `<span class="${i < L.i ? 'ok' : i === L.i ? 'cur' : ''}">${harp.notes[st.note].tab}</span>`).join('')}</div>
+    <div class="reps">${t.tab} ${t.pc}: ${reqText(s.req)}. ${L.reps} of ${s.reps}</div>
+    <div class="flash ${L.flashCls}" id="flash">${L.flash}</div>
+    <div class="row"><button class="btn" id="lHear">Hear target</button><button class="btn" id="lSkip">Skip step</button><button class="btn" id="lBack">All levels</button></div>
+    <details><summary>Technique ideas</summary><ul>${TECH.map(x => `<li>${x}</li>`).join('')}</ul><p class="lead">These are general suggestions. The app can only hear pitch; it cannot see what your mouth is doing.</p></details></div>`;
+  $('lHear').onclick = () => Tone.play(target.freq);
+  $('lSkip').onclick = () => advance(true);
+  $('lBack').onclick = exitLesson;
+  updateHoldGoal();
+}
+function flash(msg, good) { lesson.flash = msg; lesson.flashCls = good ? 'good' : 'bad'; const f = $('flash'); if (f) { f.textContent = msg; f.className = 'flash ' + lesson.flashCls; } }
+function lessonCheck(L) {
+  if (!lesson || lesson.complete || !L.active || lesson.attemptDone) return;
+  const r = lesson.step.req;
+  let ok = false;
+  if (r.type === 'discover') ok = L.discovered;
+  else if (r.type === 'hold') ok = L.holdMs >= r.ms;
+  else if (r.type === 'blue') ok = L.blueRunMs >= r.ms && L.inGray;
+  else if (r.type === 'direct' && L.initial != null) {
+    lesson.attemptDone = true;
+    if (Math.abs(L.initial) <= CONFIG.grayCents) { lesson.reps++; flash(`Direct hit. First stable pitch ${fmtCents(L.initial)}.`, true); }
+    else flash(`First stable pitch was ${fmtCents(L.initial)}. ${L.initial > 0 ? 'You started sharp of the target.' : 'You started flat of the target.'}`, false);
+    renderLessonReps(); return;
+  }
+  if (ok) { lesson.attemptDone = true; lesson.reps++; flash(r.type === 'discover' ? 'Yes. That is a bend.' : 'Done. Release the note.', true); renderLessonReps(); }
+}
+function renderLessonReps() { const el = document.querySelector('.reps'); if (el) { const s = lesson.step; el.textContent = `${target.tab} ${target.pc}: ${reqText(s.req)}. ${lesson.reps} of ${s.reps}`; } }
+function lessonAttemptEnded(res) {
+  if (!lesson || lesson.complete) return;
+  if (!lesson.attemptDone) flash(verdictShort(res), false);
+  lesson.attemptDone = false;
+  if (lesson.reps >= lesson.step.reps) advance(false);
+}
+function advance(skipped) {
+  if (lesson.i < lesson.steps.length - 1) { lesson.i++; if (!skipped) lesson.flash = 'Step complete.'; enterStep(); return; }
+  lesson.complete = true;
+  if (!skipped) { Store.data.levels[lesson.lv.n] = true; Store.save(); }
+  const n = lesson.lv.n;
+  lesson.flash = skipped ? 'Level ended.' : `Level ${n} complete.`; lesson.flashCls = 'good';
+  renderLesson();
+  const row = document.querySelector('.lesson .row');
+  if (n < 8) { const b = document.createElement('button'); b.className = 'btn primary'; b.textContent = `Start level ${n + 1}`; b.onclick = () => startLevel(n + 1); row.prepend(b); }
+  $('lSkip').disabled = true;
+  renderLevels();
+}
+function exitLesson() {
+  lesson = null; $('lessonPanel').hidden = true; $('levelList').hidden = false; renderLevels();
+  setTarget(practiceTargetId);
+}
+function updateHoldGoal() {
+  const r = lesson && lesson.step.req;
+  $('holdGoal').textContent = !r ? 'Reached after ' + (CONFIG.reachMs / 1000).toFixed(2) + ' s in gray'
+    : r.type === 'hold' ? `Goal ${(r.ms / 1000).toFixed(r.ms < 1000 ? 2 : 1)} s` : r.type === 'blue' ? `Goal ${(r.ms / 1000).toFixed(2)} s in blue` : '';
+}
+
+// ---------- attempt results and stats ----------
+function verdictShort(r) {
+  const t = harp.notes[r.noteId];
+  if (r.mode === 'discover') return r.discovered ? 'Bend detected.' : r.bent ? 'The pitch moved, but not far enough. Aim for a bigger drop.' : 'No bend detected yet. The pitch stayed near the natural note.';
+  if (r.mode === 'direct' && r.initialCents != null && !r.initialHit)
+    return r.startedAboveSlid ? `You started ${fmtCents(r.initialCents)} from the target and slid into it. Try landing on it directly.` : `First stable pitch ${fmtCents(r.initialCents)}.`;
+  if (r.reached) return r.overshoots ? `Reached ${t.pc}, after passing it ${r.overshoots}×.` : `Reached ${t.pc}.`;
+  if (r.overshoots) return `You passed ${t.pc} and did not settle on it. Release the bend slightly to stop on it.`;
+  if (r.undershoot) return `Closest you got: ${fmtCents(r.closestCents)} sharp of ${t.pc}. Keep bending lower.`;
+  return `Did not stay in the gray zone long enough to count.`;
+}
+function renderSummary(r) {
+  const t = harp.notes[r.noteId], s = x => (x / 1000).toFixed(2) + ' s';
+  const items = [];
+  if (r.mode === 'discover') {
+    if (r.maxDrop != null) items.push(['Deepest drop from your starting pitch', fmtCents(Math.min(0, r.maxDrop))]);
+    items.push(['Needed', '−' + CONFIG.discoverDropCents + '¢ or lower']);
+    const el = $('summary'); el.hidden = false;
+    el.innerHTML = `<div class="verdict">Last attempt on ${t.tab} ${t.pc}: ${verdictShort(r)}</div><dl>${items.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>`;
+    return;
+  }
+  if (r.timeToTarget != null) items.push(['Time to target', s(r.timeToTarget)]);
+  items.push(['Longest hold in gray', s(r.longestHold)]);
+  if (r.holdMean != null) items.push(['Mean error while holding', fmtCents(r.holdMean)]);
+  if (r.jitter != null) items.push(['Jitter while holding', '±' + r.jitter.toFixed(1) + '¢']);
+  if (r.drift != null && r.longestHold >= 500) items.push(['Drift', (r.drift >= 0 ? '+' : '−') + Math.abs(r.drift).toFixed(1) + '¢/s ' + (Math.abs(r.drift) < 3 ? '(steady)' : r.drift > 0 ? 'sharp' : 'flat')]);
+  items.push(['Time in blue', s(r.blueMs)]);
+  if (r.mode === 'direct' && r.initialCents != null) items.push(['First stable pitch', fmtCents(r.initialCents)]);
+  if (r.overshoots) items.push(['Overshoots', `${r.overshoots} (up to ${Math.round(r.maxOvershoot)}¢ flat)`]);
+  if (r.stalls) items.push(['Stalls before target', r.stalls]);
+  if (r.reversals) items.push(['Direction changes', r.reversals]);
+  if (r.visited.length) items.push(['Passed through', r.visited.join(', ')]);
+  const el = $('summary'); el.hidden = false;
+  el.innerHTML = `<div class="verdict">Last attempt on ${t.tab} ${t.pc}: ${verdictShort(r)}</div><dl>${items.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>`;
+}
+function record(r) {
+  const k = Store.data.settings.key + '|' + r.noteId;
+  const s = Store.data.stats[k] || (Store.data.stats[k] = { attempts: 0, hits: 0, errSum: 0, errN: 0, best: null, tttSum: 0, tttN: 0, longest: 0, blueMs: 0, overshoots: 0, undershoots: 0, direct: 0, directHits: 0 });
+  s.attempts++;
+  if (r.reached) s.hits++;
+  if (r.holdMeanAbs != null) { s.errSum += r.holdMeanAbs; s.errN++; s.best = s.best == null ? r.holdMeanAbs : Math.min(s.best, r.holdMeanAbs); }
+  if (r.timeToTarget != null) { s.tttSum += r.timeToTarget; s.tttN++; }
+  s.longest = Math.max(s.longest, r.longestHold); s.blueMs += r.blueMs;
+  s.overshoots += r.overshoots; if (r.undershoot) s.undershoots++;
+  if (r.mode === 'direct' && r.initialCents != null) { s.direct++; if (r.initialHit) s.directHits++; }
+  Store.save();
+  if (view === 'progress') renderProgress();
+}
+tracker.onFinish = r => { if (r.mode !== 'discover') record(r); renderSummary(r); lessonAttemptEnded(r); };
+
+function renderProgress() {
+  const key = Store.data.settings.key, kname = KEYS.find(k => k.id === key).name;
+  const notes = Object.values(harp.notes).sort((a, b) => a.hole - b.hole || (a.dir > b.dir ? 1 : -1) || a.bend - b.bend);
+  const rows = notes.filter(n => n.bend > 0 || Store.data.stats[key + '|' + n.id]).map(n => {
+    const s = Store.data.stats[key + '|' + n.id];
+    if (!s) return `<tr><td>${n.tab} ${n.pc}</td><td>0</td><td colspan="10" style="text-align:left;color:var(--muted)">Not attempted</td></tr>`;
+    const pct = s.attempts ? Math.round(100 * s.hits / s.attempts) + '%' : '—';
+    return `<tr><td>${n.tab} ${n.pc}</td><td>${s.attempts}</td><td>${s.hits}</td><td>${pct}</td><td>${s.errN ? (s.errSum / s.errN).toFixed(1) + '¢' : '—'}</td><td>${s.best != null ? s.best.toFixed(1) + '¢' : '—'}</td><td>${s.tttN ? (s.tttSum / s.tttN / 1000).toFixed(2) + ' s' : '—'}</td><td>${(s.longest / 1000).toFixed(1)} s</td><td>${(s.blueMs / 1000).toFixed(1)} s</td><td>${s.overshoots}</td><td>${s.undershoots}</td><td>${s.direct ? s.directHits + '/' + s.direct : '—'}</td></tr>`;
+  }).join('');
+  const lv = LEVELS.map(l => `${l.n}. ${l.title}: ${Store.data.levels[l.n] ? 'complete' : 'not yet'}`).join('<br>');
+  $('progressBody').innerHTML = `<h2>${kname} harmonica, per note</h2><p class="lead">Errors are the average distance from the target while holding in the gray zone. Stats are kept separately for each harmonica key.</p>
+    <div class="tbl-scroll"><table><thead><tr><th>Note</th><th>Attempts</th><th>Hits</th><th>Success</th><th>Avg error</th><th>Best</th><th>Avg time to target</th><th>Longest hold</th><th>Blue time</th><th>Overshoots</th><th>Undershoots</th><th>Direct hits</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <h2>Learn levels</h2><p class="lead">${lv}</p>`;
+}
+
+// ---------- drawing ----------
+let colors = {}, colorsT = 0;
+function readColors() {
+  const cs = getComputedStyle(document.documentElement);
+  ['--ink', '--muted', '--line', '--brass', '--zone-gray', '--zone-gray-edge', '--laser', '--laser-soft', '--warn', '--trace', '--trace-dim', '--panel'].forEach(k => colors[k] = cs.getPropertyValue(k).trim());
+}
+function fitCanvas(cv) {
+  const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { c, W: r.width, H: r.height };
+}
+// lad: the pitch ladder to draw. tId/tC: the target step and its cents (null in Free play). H: trace.
+function drawMeter(now, lad, tId, tC, hist, markId) {
+  const { c, W, H } = fitCanvas($('meter'));
+  c.clearRect(0, 0, W, H);
+  if (!lad) {
+    c.fillStyle = colors['--muted']; c.font = '600 15px Archivo, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(audio.on ? 'Play any hole. Its bend path appears here.' : 'Start the microphone to see your pitch.', W / 2, H / 2);
+    c.textAlign = 'left'; return;
+  }
+  const natM = lad[0].midi;
+  const topC = 60, botC = (lad[lad.length - 1].midi - natM) * 100 - 60;
+  const padT = 8, padB = 8, gut = 66, right = 12;
+  const y = cv => padT + ((topC - cv) / (topC - botC)) * (H - padT - padB);
+  // zones around the target (Target practice only)
+  if (tC != null) {
+    c.fillStyle = colors['--zone-gray'];
+    c.fillRect(gut, y(tC + CONFIG.grayCents), W - gut, y(tC - CONFIG.grayCents) - y(tC + CONFIG.grayCents));
+    c.fillStyle = colors['--laser-soft'];
+    c.fillRect(gut, y(tC + CONFIG.blueCents), W - gut, Math.max(2, y(tC - CONFIG.blueCents) - y(tC + CONFIG.blueCents)));
+  }
+  // ladder lines
+  c.font = '600 12px Archivo, sans-serif'; c.textBaseline = 'middle';
+  lad.forEach(n => {
+    const cv = (n.midi - natM) * 100, yy = y(cv), isT = n.id === tId || n.id === markId;
+    c.strokeStyle = isT ? colors['--ink'] : colors['--line']; c.lineWidth = isT ? 1.5 : 1;
+    c.setLineDash(isT ? [] : [4, 4]); c.beginPath(); c.moveTo(gut, yy); c.lineTo(W, yy); c.stroke(); c.setLineDash([]);
+    c.fillStyle = isT ? colors['--ink'] : colors['--muted'];
+    c.font = (isT ? '800 ' : '600 ') + '13px Archivo, sans-serif';
+    c.fillText(n.tab, 4, yy); c.fillText(n.pc, 40, yy);
+  });
+  // trajectory, colored by phase and zone
+  const span = 5000, x = t => gut + (W - gut - right) * (1 - (now - t) / span);
+  let prev = null;
+  c.lineWidth = 2.5; c.lineCap = 'round';
+  for (const p of hist) {
+    if (p.v == null || now - p.t > span) { prev = null; continue; }
+    if (prev && p.t - prev.t < 120) {
+      c.strokeStyle = p.s === 'attack' ? colors['--trace-dim'] : p.s === 'blue' ? colors['--laser'] : p.s === 'gray' ? colors['--zone-gray-edge'] : colors['--trace'];
+      c.beginPath(); c.moveTo(x(prev.t), y(clamp(prev.v, botC, topC))); c.lineTo(x(p.t), y(clamp(p.v, botC, topC))); c.stroke();
+    }
+    prev = p;
+  }
+  const last = hist[hist.length - 1];
+  if (last && last.v != null && now - last.t < 150) {
+    const cx = x(last.t), cy = y(clamp(last.v, botC, topC));
+    c.fillStyle = last.s === 'blue' ? colors['--laser'] : colors['--brass'];
+    c.beginPath(); c.arc(cx, cy, 7, 0, Math.PI * 2); c.fill();
+    if (last.v > topC || last.v < botC) { c.fillStyle = colors['--warn']; c.font = '700 12px Archivo, sans-serif'; c.fillText(last.v > topC ? '▲ above range' : '▼ below range', gut + 6, last.v > topC ? 14 : H - 14); }
+  }
+}
+function drawZone(cents) {
+  const { c, W, H } = fitCanvas($('zone'));
+  c.clearRect(0, 0, W, H);
+  const R = 50, pad = 16, x = v => pad + ((clamp(v, -R, R) + R) / (2 * R)) * (W - 2 * pad), mid = 26;
+  c.font = '600 11px Archivo, sans-serif'; c.textBaseline = 'top';
+  let msg = null;
+  if (cents != null && Math.abs(cents) > R) msg = cents > 0 ? 'Beyond +50¢ sharp' : 'Beyond −50¢ flat';
+  if (msg) { c.fillStyle = colors['--warn']; c.textAlign = cents > 0 ? 'right' : 'left'; c.fillText(msg, cents > 0 ? W - pad : pad, 0); }
+  else { c.fillStyle = colors['--muted']; c.textAlign = 'left'; c.fillText('◀ flat', pad, 0); c.textAlign = 'right'; c.fillText('sharp ▶', W - pad, 0); }
+  c.fillStyle = colors['--line']; c.fillRect(pad, mid - 4, W - 2 * pad, 8);
+  c.fillStyle = colors['--zone-gray']; c.fillRect(x(-CONFIG.grayCents), mid - 9, x(CONFIG.grayCents) - x(-CONFIG.grayCents), 18);
+  c.fillStyle = colors['--laser']; c.globalAlpha = .45; c.fillRect(x(-CONFIG.blueCents), mid - 9, x(CONFIG.blueCents) - x(-CONFIG.blueCents), 18); c.globalAlpha = 1;
+  c.fillStyle = colors['--ink']; c.fillRect(x(0) - 1, mid - 11, 2, 22);
+  c.fillStyle = colors['--muted']; c.textAlign = 'center';
+  [-50, -25, 0, 25, 50].forEach(v => c.fillText(v === 0 ? '0' : fmtCents(v).replace('¢', ''), clamp(x(v), pad + 8, W - pad - 8), mid + 12));
+  c.textAlign = 'left';
+  if (cents != null) {
+    const cx = x(cents);
+    c.fillStyle = Math.abs(cents) <= CONFIG.blueCents ? colors['--laser'] : Math.abs(cents) <= CONFIG.grayCents ? colors['--ink'] : colors['--brass'];
+    c.beginPath(); c.moveTo(cx, mid + 2); c.lineTo(cx - 7, mid - 12); c.lineTo(cx + 7, mid - 12); c.closePath(); c.fill();
+  }
+}
+
+// ---------- main loop ----------
+function frame() {
+  requestAnimationFrame(frame);
+  const now = performance.now();
+  if (now - colorsT > 800) { readColors(); colorsT = now; }
+  let rms = 0;
+  const blocked = Tone.blocking(now);
+  // 1. DETECTED: microphone → pitch → hole/breath/bend. Independent of target, lesson and selection.
+  if (audio.on && audio.analyser && !blocked) {
+    audio.analyser.getFloatTimeDomainData(audio.buf);
+    const fr = analyzeFrame(audio.buf, audio.ctx.sampleRate, detect, now);
+    rms = fr.rms;
+    det = holeDet.feed(fr);
+  } else det = holeDet.pause(now, !audio.on ? 'microphone off' : 'paused: reference tone playing');
+  const rawF = det.accepted ? det.freq : null; // this frame's accepted pitch (octave-repaired), or null
+  rmsSmooth = rmsSmooth * 0.8 + rms * 0.2;
+  const lvlPos = v => clamp((20 * Math.log10(Math.max(v, 1e-6)) + 70) / 60, 0, 1) * 100 + '%'; // −70…−10 dBFS
+  $('lvl').style.width = lvlPos(rmsSmooth); $('lvlThr').style.left = lvlPos(det.threshold || DETECT.minLevel);
+  renderDetected(det); renderDebug(det, now);
+  // 2. TARGET scoring: only in Target practice, fed the detector's accepted pitch; never writes DETECTED.
+  const L = audio.on && !blocked && mode === 'target' ? tracker.feed(now, rawF) : { active: false };
+  if (prevActive && !L.active && lesson) lesson.attemptDone = false;
+  prevActive = L.active;
+  if (lesson) lessonCheck(L);
+
+  if (mode === 'free') { drawFree(now); return; }
+  $('centsLbl').textContent = 'Off target';
+  const tb = $('tMatch');
+  if (det.hole == null) { tb.textContent = ''; tb.className = 'tmatch'; }
+  else {
+    const onT = det.cands.some(e => e.hole === target.hole && e.dir === target.dir && !e.kind.startsWith('over'));
+    tb.textContent = onT ? `You're on the target hole (${target.hole} ${target.dir}).`
+      : `You're playing ${det.ambiguous ? det.cands.map(e => e.hole + ' ' + e.dir).join(' or ') : det.hole + ' ' + det.dir}. The target is ${target.hole} ${target.dir}.`;
+    tb.className = 'tmatch ' + (onT ? 'ok' : 'no');
+  }
+  // display smoothing: median-filtered pitch, then adaptive exponential smoothing (fast on real moves, calm on jitter)
+  if (L.active && L.voiced && L.zoneNat != null) {
+    const d = disp == null ? 99 : Math.abs(L.zoneNat - disp);
+    const a = d > 30 ? 0.7 : d > 10 ? 0.45 : 0.28;
+    disp = disp == null ? L.zoneNat : disp + a * (L.zoneNat - disp);
+    const zc = L.zoneCents;
+    hist.push({ t: now, v: disp, s: L.phase === 'attack' ? 'attack' : L.inBlue ? 'blue' : L.inGray ? 'gray' : 'move' });
+  } else { hist.push({ t: now, v: null }); if (!L.active) disp = null; }
+  while (hist.length && now - hist[0].t > 5200) hist.shift();
+
+  // readouts
+  const dc = disp != null ? disp - tracker.targetNat : null;
+  const big = $('cents');
+  if (dc != null) {
+    big.textContent = fmtCents(dc);
+    big.className = 'big ' + (Math.abs(dc) <= CONFIG.blueCents ? 'blue' : Math.abs(dc) <= CONFIG.grayCents ? 'gray' : 'sharp');
+  } else { big.textContent = '—'; big.className = 'big idle'; }
+  const showF = L.f || rawF;
+  if (showF) {
+    const m = freqToMidi(showF), r = Math.round(m);
+    $('dNote').textContent = `${noteName(r)} ${fmtCents((m - r) * 100)}`; $('dHz').textContent = showF.toFixed(2) + ' Hz';
+    lastRaw = now;
+  } else if (!lastRaw || now - lastRaw > 400) { $('dNote').textContent = '—'; $('dHz').textContent = '— Hz'; }
+  const laser = $('laser'), isLaser = L.active && L.inBlue && L.holdMs >= CONFIG.reachMs;
+  laser.classList.toggle('on', isLaser);
+  if (isLaser) laser.textContent = 'LASER ACCURATE ' + fmtCents(L.zoneCents);
+  $('stab').textContent = L.recentStd == null || !L.active ? '—' : L.recentStd < 3 ? 'Very steady' : L.recentStd < 7 ? 'Steady' : L.recentStd < 15 ? 'Wavering' : 'Unstable';
+  $('phase').textContent = !audio.on ? 'Microphone off' : blocked ? 'Reference playing' : !L.active ? 'Waiting for a note' : L.phase === 'attack' ? 'Attack' : L.phase === 'hold' ? 'Holding' : 'Moving';
+  const goal = lesson && lesson.step.req.ms ? lesson.step.req.ms : 3000;
+  const useBlue = lesson && lesson.step.req.type === 'blue';
+  const hv = L.active ? (useBlue ? L.blueRunMs : L.holdMs) || 0 : 0;
+  const hf = $('holdFill'); hf.style.width = clamp(hv / goal, 0, 1) * 100 + '%'; hf.classList.toggle('blue', !!(useBlue || (L.active && L.inBlue)));
+  $('holdTxt').textContent = (useBlue ? 'Blue ' : 'Hold ') + (hv / 1000).toFixed(1) + ' s';
+  $('coach').textContent = !audio.on ? 'Start the microphone to begin. Real-time training needs to hear your harmonica.' : blocked ? 'Listen to the target.' : coachMessage(tracker);
+
+  drawMeter(now, tracker.ladder, target.id, tracker.targetNat, hist); drawZone(dc);
+}
+
+// Free play readouts and meter: everything here comes from `det`.
+function drawFree(now) {
+  const D = det, on = D.hole != null && !D.ambiguous;
+  $('centsLbl').textContent = 'Off note';
+  const big = $('cents');
+  if (D.hole != null) {
+    big.textContent = fmtCents(D.centsOffset);
+    big.className = 'big ' + (Math.abs(D.centsOffset) <= CONFIG.blueCents ? 'blue' : Math.abs(D.centsOffset) <= CONFIG.grayCents ? 'gray' : 'sharp');
+  } else { big.textContent = '—'; big.className = 'big idle'; }
+  const showF = D.smoothFreq || D.rawFreq;
+  if (showF) { const m = freqToMidi(showF), r = Math.round(m); $('dNote').textContent = `${noteName(r)} ${fmtCents((m - r) * 100)}`; $('dHz').textContent = showF.toFixed(2) + ' Hz'; lastRaw = now; }
+  else if (!lastRaw || now - lastRaw > 400) { $('dNote').textContent = '—'; $('dHz').textContent = '— Hz'; }
+  $('stab').textContent = D.spread == null || D.hole == null ? '—' : D.spread < 3 ? 'Very steady' : D.spread < 7 ? 'Steady' : D.spread < 15 ? 'Wavering' : 'Unstable';
+  $('phase').textContent = !audio.on ? 'Microphone off' : D.status === 'active' ? 'Playing' : D.status === 'release' ? 'Released' : 'Waiting for a note';
+  $('coach').textContent = freeCoach(D);
+  // meter: the bend ladder of the reed actually being played
+  const reed = D.hole != null ? D.hole + D.dir + (D.ambiguous ? '?' : '') : null;
+  if (reed !== freeReed && D.hole != null) { freeReed = reed; freeHist = []; }
+  if (D.hole != null && D.status === 'active') freeHist.push({ t: now, v: (D.midiF - D.natMidi) * 100, s: 'move' });
+  else freeHist.push({ t: now, v: null });
+  while (freeHist.length && now - freeHist[0].t > 5200) freeHist.shift();
+  let lad = null;
+  if (D.hole != null) lad = D.kind === 'overblow' || D.kind === 'overdraw' ? [D.entry] : ladderFor(harp, D.entry);
+  drawMeter(now, lad, null, null, freeHist, on ? D.entry.id : null);
+  drawZone(D.hole != null ? D.centsOffset : null);
+}
+
+// ---------- wiring ----------
+function init() {
+  Store.load();
+  $('keySel').innerHTML = KEYS.map(k => `<option value="${k.id}">${k.name}</option>`).join('');
+  practiceTargetId = Store.data.settings.target || '4D1';
+  applySettings(); readColors(); rebuildHarp(); renderLevels(); renderProgress();
+  setMode(Store.data.settings.mode === 'target' ? 'target' : 'free');
+  window.BendLab = { get det() { return det; }, get mode() { return mode; }, get target() { return target; }, setMode, choose, holeDet }; // for automated tests
+  $('micBtn').onclick = toggleMic;
+  $('hearBtn').onclick = () => Tone.play(target.freq, 2000);
+  $('stopBtn').onclick = () => Tone.stop();
+  $('keySel').onchange = e => { Store.data.settings.key = e.target.value; Store.save(); rebuildHarp(); if (lesson) renderLesson(); renderProgress(); };
+  $('vol').oninput = e => { Store.data.settings.volume = +e.target.value; Store.save(); if (Tone.voice) Tone.voice.g.gain.setTargetAtTime(+e.target.value * 0.5, audio.ctx.currentTime, 0.02); };
+  $('timbre').onchange = e => { Store.data.settings.timbre = e.target.value; Store.save(); };
+  $('directMode').onchange = () => { if (!lesson) setTarget(practiceTargetId); };
+  const num = (id, key, lo, hi) => $(id).onchange = e => { const v = clamp(+e.target.value || 0, lo, hi); Store.data.settings[key] = v; Store.save(); applySettings(); updateHoldGoal(); };
+  num('sGray', 'gray', 2, 40); num('sBlue', 'blue', 1, 20); num('sTrans', 'transient', 40, 400); num('sReach', 'reach', 100, 1000); num('sMin', 'minLevel', 0.0001, 0.05);
+  $('modeFree').onclick = () => setMode('free');
+  $('modeTarget').onclick = () => setMode('target');
+  $('resetBtn').onclick = () => { if (confirm('Reset all stats and level progress?')) { Store.data.stats = {}; Store.data.levels = {}; Store.save(); renderProgress(); renderLevels(); } };
+  document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => {
+    view = b.dataset.view;
+    document.querySelectorAll('nav.tabs button').forEach(x => x.setAttribute('aria-selected', x === b));
+    document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'view-' + view));
+    if (view === 'progress') renderProgress();
+  });
+  showNotice('Real-time training requires microphone access. Tap Start microphone and allow access when asked.');
+  requestAnimationFrame(frame);
+  Store.initRemote();
+}
+init();
+</script>
+</body></html>

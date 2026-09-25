@@ -106,6 +106,12 @@ select{background:var(--panel);border:1px solid var(--line);border-radius:6px;pa
 .lvl s{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--warn);left:0}
 details.dbg{margin-top:10px;font-size:13px}
 details.dbg pre{white-space:pre-wrap;font:12px/1.45 ui-monospace,Menlo,monospace;background:var(--plate);border:1px solid var(--line);border-radius:6px;padding:8px;margin:6px 0 0;overflow-x:auto}
+.tmatch.amb{color:var(--brass);font-weight:700}
+.calbox{border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--panel)}
+.calmsg{font-size:13px;color:var(--muted);margin:8px 0 0}
+dl.sess{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 14px;margin:6px 0 10px}
+dl.sess dt{color:var(--muted);font-size:12px}
+dl.sess dd{margin:0;font-weight:700;font-size:18px}
 @media (max-width:420px){ .det-hole b{font-size:54px} .det-dir{font-size:22px;padding:5px 10px} .det-grid{grid-template-columns:1fr 1fr} }
 
 /* tabs */
@@ -240,6 +246,8 @@ th{color:var(--muted);font-weight:600}
     <div class="harp" id="harp"></div>
     <div class="rowlbl"><span>Draw bends</span></div>
   </div>
+  <details id="techBox"><summary>Technique ideas for bending</summary><ul id="techList"></ul>
+    <p class="lead">These are suggestions only. BendLab hears pitch through the microphone; it cannot see or measure your tongue, jaw, throat or mouth, and never claims to.</p></details>
   <div class="tone-row">
     <label>Volume <input type="range" id="vol" min="0" max="1" step="0.01"></label>
     <label>Tone <select id="timbre"><option value="sine">Pure reference</option><option value="reed">Reed-like</option></select></label>
@@ -252,7 +260,12 @@ th{color:var(--muted);font-weight:600}
   <div id="lessonPanel" hidden></div>
 </section>
 
-<section class="view" id="view-progress"><div id="progressBody"></div></section>
+<section class="view" id="view-progress">
+  <h2>This session</h2>
+  <p class="lead">Kept separately from lifetime progress, and it stays here after you stop the microphone.</p>
+  <div id="sessionBody"></div>
+  <div id="progressBody"></div>
+</section>
 
 <section class="view" id="view-settings">
   <div class="set">
@@ -261,6 +274,12 @@ th{color:var(--muted);font-weight:600}
     <label>Attack window, ms <input type="number" id="sTrans" min="40" max="400" step="10"><small>Pitch right after the note starts is shown but not scored for held bends.</small></label>
     <label>Required time in zone to count as reached, ms <input type="number" id="sReach" min="100" max="1000" step="50"></label>
     <label>Minimum input level <input type="number" id="sMin" min="0.0001" max="0.05" step="0.0001"><small>BendLab measures your room's noise on its own and sets the detection threshold above it (the red mark on the level bar). This is only an absolute floor underneath that. Raise it only if a noisy microphone still produces notes when nobody is playing. Default 0.0004.</small></label>
+    <div class="calbox">
+      <b>Microphone calibration</b>
+      <p class="lead">Measures your quiet room, then one soft note from you, and sets the detection thresholds from both. Better than simply lowering every threshold, which invents notes out of room noise.</p>
+      <div class="row"><button class="btn" id="calBtn">Calibrate microphone</button></div>
+      <p class="calmsg" id="calMsg">Not calibrated yet.</p>
+    </div>
     <label>Reference pitch A4 <b>440 Hz</b><small>Equal temperament. Every target and reference tone is calculated from A4 = 440 Hz.</small></label>
     <div class="row"><button class="btn" id="resetBtn">Reset all progress</button></div>
     <p class="sync" id="syncTxt">Progress is saved in this browser.</p>
@@ -666,6 +685,9 @@ const DETECT = {
   floorInit: 0.001,       // starting guess for the room's noise floor, replaced within a fraction of a second
   floorFall: 0.25,        // noise-floor estimate falls fast (a quiet room is recognised at once)...
   floorRise: 0.015,       // ...and rises slowly (≈1 s), so a breath or a decaying note can't drag it up
+  floorConfMax: 0.75,     // a frame this periodic is a TONE, never room noise: it must not raise the floor
+  clearConf: 0.90,        // a quiet but unmistakably periodic frame is accepted on clarity alone...
+  clearConfHold: 0.84,    // ...slightly relaxed while a note is already being tracked
   snrOnset: 2.0,          // a NEW note must be ≥ this × the noise floor (≈ +6 dB)
   snrHold: 1.4,           // a note already being tracked may continue down to ≈ +3 dB (soft decays, bends)
   snrMid: 3.5, snrLoud: 8,// level bands that set how much pitch clarity is required...
@@ -675,6 +697,8 @@ const DETECT = {
   holdConfRelax: 0.06,    // clarity relaxation while continuing a note that is already tracked
   confirmMs: 45,          // a new note must agree for this long...
   confirmMinFrames: 3,    // ...and over at least this many frames (≈ 50 ms at 60 fps)
+  switchConfirmMs: 110,   // ...but taking the display AWAY from a note already on screen needs more
+  switchConfirmFrames: 5, //    evidence than starting one from silence: brief bad frames must not switch holes
   pendingMaxAgeMs: 160,
   onsetSpreadCents: 30,   // confirming frames must agree this closely: harmonica tones are steady
   jumpCents: 80,          // a frame-to-frame change bigger than this is a jump to another hole, not a bend
@@ -782,12 +806,17 @@ class HoleDetector {
     let freq = fr.freq, reason = null, need = null, octave = 0, mF = null;
 
     // 1. Is this frame a usable tone? Level, clarity and plausibility are judged separately.
+    // A soft player sits close to the noise floor, so clarity can stand in for loudness: a frame that is
+    // strongly periodic is a reed, not a room. Breath and room noise are never this periodic.
+    let quiet = false;
+    const clearEnough = freq && fr.conf >= (tracking ? c.clearConfHold : c.clearConf);
     if (fr.rms < c.minLevel) reason = 'rejected: below absolute minimum level';
-    else if (fr.rms < thr) reason = 'rejected: below noise threshold';
     else if (!freq) reason = 'rejected: no periodic pitch in this frame';
     else {
       need = (snr >= c.snrLoud ? c.confLoud : snr >= c.snrMid ? c.confMid : c.confStrong) - (tracking ? c.holdConfRelax : 0);
-      if (fr.conf < need) reason = `rejected: pitch clarity ${fr.conf.toFixed(2)} below ${need.toFixed(2)} needed at this level`;
+      if (fr.rms < thr && !clearEnough) reason = 'rejected: below noise threshold';
+      else if (fr.conf < need && !clearEnough) reason = `rejected: pitch clarity ${fr.conf.toFixed(2)} below ${need.toFixed(2)} needed at this level`;
+      else if (fr.rms < thr) quiet = true;
     }
     if (!reason) {
       mF = freqToMidi(freq);
@@ -806,10 +835,13 @@ class HoleDetector {
         reason = 'rejected: not a pitch this harmonica can play';
     }
 
-    // 2. Learn the room from frames that carry no usable tone.
-    if (reason) {
+    // 2. Learn the room from frames that carry no usable tone. A periodic frame never raises the floor:
+    // otherwise a held soft note is absorbed into the "room noise" estimate and locks itself out.
+    {
       const r = Math.max(fr.rms, 1e-6);
-      this.floor += (r - this.floor) * (r < this.floor ? c.floorFall : c.floorRise);
+      const tonal = !!fr.freq && fr.conf >= c.floorConfMax;
+      if (r < this.floor) this.floor += (r - this.floor) * c.floorFall;       // quiet is always believed
+      else if (reason && !tonal) this.floor += (r - this.floor) * c.floorRise;
     }
 
     // 3. Map the pitch to a reed.
@@ -825,8 +857,12 @@ class HoleDetector {
       } else {
         this.pend = this.pend.filter(p => t - p.t <= c.pendingMaxAgeMs && Math.abs(p.mF - mF) * 100 <= c.onsetSpreadCents);
         this.pend.push({ t, mF });
-        if (this.pend.length >= c.confirmMinFrames && t - this.pend[0].t >= c.confirmMs) { this.adopt(t); note = 'accepted: new note confirmed'; }
-        else note = `accepted: confirming new note (${this.pend.length} frames)`;
+        // Switching away from a note already on screen demands more agreement than starting from silence.
+        const live = !!this.cur && t - this.cur.lastT <= c.continuityMs;
+        const needF = live ? c.switchConfirmFrames : c.confirmMinFrames;
+        const needMs = live ? c.switchConfirmMs : c.confirmMs;
+        if (this.pend.length >= needF && t - this.pend[0].t >= needMs) { this.adopt(t); note = 'accepted: new note confirmed'; }
+        else note = `accepted: confirming ${live ? 'a change of hole' : 'new note'} (${this.pend.length} frames)`;
       }
     }
     if (this.cur && t - this.cur.lastT > c.releaseMs) this.cur = null;
@@ -835,7 +871,7 @@ class HoleDetector {
     const st = {
       t, rms: fr.rms, floor: this.floor, threshold: thr, snr, conf: fr.conf, need,
       rawFreq: fr.freq, freq: reason ? null : freq, accepted: !reason, octave,
-      reason: reason || note, pending: this.pend.length,
+      reason: reason || (quiet ? note + ' (quiet, accepted on pitch clarity)' : note), quiet, pending: this.pend.length,
       status: !cur ? (this.pend.length ? 'confirming' : 'idle') : (t - cur.lastT <= c.continuityMs ? 'active' : 'release'),
     };
     if (cur) {
@@ -843,6 +879,7 @@ class HoleDetector {
       Object.assign(st, {
         midiF: sm, smoothFreq: midiToFreq(sm), hole: e.hole, dir: e.dir, kind: cur.step.kind, entry: cur.step,
         natMidi: e.natMidi, cands: cur.cands, ambiguous: cur.ambiguous, resolvedBy: cur.resolvedBy,
+        likely: cur.likely, likelyWhy: cur.likelyWhy,
         bend: bendInfo(e, sm), centsOffset: (sm - cur.step.midi) * 100,
         spread: sp.length > 1 ? meanStd(sp).std : null,
       });
@@ -854,14 +891,17 @@ class HoleDetector {
     const c = this.cfg, prev = this.cur;
     const mF = medianOf(this.pend.map(p => p.mF));
     const g = nearestGroup(this.map, mF);
-    let cands = g.entries, resolvedBy = null;
-    // Several reeds produce this exact pitch (e.g. 2 draw and 3 blow). Pitch cannot tell them apart.
-    // Real evidence only: breath direction cannot reverse without the sound stopping.
+    let cands = g.entries, resolvedBy = null, likely = null, likelyWhy = null;
+    // Several reeds produce this exact pitch (e.g. 2 draw and 3 blow on a C harp). Pitch alone cannot
+    // tell them apart, and a microphone cannot hear breath direction. Unbroken sound makes one of them
+    // MORE LIKELY (reversing the breath normally interrupts the tone) but it is not proof: a fast
+    // switch can leave a gap too short to see. So it is offered as a hint, never as a resolution, and
+    // hole-specific scoring stays withheld.
     if (cands.length > 1 && prev && !prev.ambiguous && this.pend[0].t - prev.lastT <= c.breathGapMs) {
       const same = cands.filter(e => e.dir === prev.entry.dir);
-      if (same.length === 1) { cands = same; resolvedBy = `no break in the sound since ${prev.entry.hole} ${prev.entry.dir}, so still ${prev.entry.dir}ing`; }
+      if (same.length === 1) { likely = same[0]; likelyWhy = `probably still ${prev.entry.dir}ing: the sound did not break after ${prev.entry.hole} ${prev.entry.dir}. Not certain.`; }
     }
-    this.cur = { cands, entry: cands[0], ambiguous: cands.length > 1, resolvedBy, lastT: t, midiF: mF, step: cands[0] };
+    this.cur = { cands, entry: cands[0], ambiguous: cands.length > 1, resolvedBy, likely, likelyWhy, lastT: t, midiF: mF, step: cands[0] };
     this.med = this.pend.map(p => p.mF).slice(-c.medianFrames);
     this.pend = [];
     this.follow(null, t);
@@ -886,6 +926,36 @@ class HoleDetector {
     for (const e of this.map.entries) if (reedKeyOf(e) === rk) { const d = Math.abs(sm - e.midi); if (d < bd) { bd = d; best = e; } }
     cur.step = best;
   }
+}
+
+// Hole-specific scoring gate. Pure function of the DETECTED state and the target: it never guesses
+// from the target, and it withholds scoring whenever the evidence is ambiguous.
+function scoreGate(det, target) {
+  if (!det || det.hole == null) return { ok: false, code: 'idle', reason: 'Waiting for a note.' };
+  if (det.status === 'release') return { ok: false, code: 'idle', reason: 'That note has stopped.' };
+  const isT = e => e.hole === target.hole && e.dir === target.dir && !isOver(e);
+  if (det.ambiguous) {
+    const pair = det.cands.map(e => `${e.hole} ${e.dir}`).join(' or ');
+    return det.cands.some(isT)
+      ? { ok: false, code: 'ambiguous', reason: `Could be ${pair}. Same pitch, so scoring is paused until the sound tells them apart.` }
+      : { ok: false, code: 'wrong', reason: `Could be ${pair}. The target is ${target.hole} ${target.dir}.` };
+  }
+  if (isT(det.entry)) return { ok: true, code: 'ok', reason: `On the target hole (${target.hole} ${target.dir}).` };
+  const k = det.kind === 'overblow' || det.kind === 'overdraw' ? `${det.hole} ${det.kind}` : `${det.hole} ${det.dir}`;
+  return { ok: false, code: 'wrong', reason: `You're playing ${k}. The target is ${target.hole} ${target.dir}.` };
+}
+
+// Frame rejections, in words a player can act on.
+function plainReason(D) {
+  const r = D && D.reason || '';
+  if (/below absolute minimum level/.test(r)) return 'Too quiet to hear.';
+  if (/below noise threshold/.test(r)) return 'Too quiet: not far enough above the room noise.';
+  if (/no periodic pitch/.test(r)) return 'Mostly breath noise, no steady pitch yet.';
+  if (/clarity/.test(r)) return 'Pitch unclear: try a cleaner single hole.';
+  if (/not a pitch this harmonica/.test(r)) return 'That pitch is not on this harmonica. Check the key setting.';
+  if (/confirming/.test(r)) return 'Confirming the note…';
+  if (/accepted/.test(r)) return 'Note confirmed.';
+  return r || '';
 }
 
 // ===================== BendLab app (DOM, audio, lessons) =====================
@@ -931,6 +1001,40 @@ const Store = {
 };
 
 // ---------- state ----------
+let lastAmbT = -Infinity;
+// This session only. Kept in memory so it survives stopping the microphone, and reset on demand.
+const Session = {
+  started: null, attempts: 0, hits: 0, ambiguous: 0, longest: 0, tttSum: 0, tttN: 0, overshoots: 0, perNote: {},
+  reset() { this.started = null; Store.data.session = null; Store.save(); this.attempts = 0; this.hits = 0; this.ambiguous = 0; this.longest = 0; this.tttSum = 0; this.tttN = 0; this.overshoots = 0; this.perNote = {}; },
+  GAP_MS: 4 * 3600 * 1000,
+  load() {
+    const d = Store.data.session;
+    if (d && d.last && Date.now() - d.last < this.GAP_MS) Object.assign(this, d);
+  },
+  save() {
+    Store.data.session = { started: this.started, last: Date.now(), attempts: this.attempts, hits: this.hits,
+      ambiguous: this.ambiguous, longest: this.longest, tttSum: this.tttSum, tttN: this.tttN, overshoots: this.overshoots, perNote: this.perNote };
+    Store.save();
+  },
+  add(r) {
+    if (!this.started) this.started = Date.now();
+    this.attempts++; if (r.reached) this.hits++;
+    this.longest = Math.max(this.longest, r.longestHold);
+    if (r.timeToTarget != null) { this.tttSum += r.timeToTarget; this.tttN++; }
+    this.overshoots += r.overshoots;
+    const n = this.perNote[r.noteId] || (this.perNote[r.noteId] = { attempts: 0, hits: 0, errSum: 0, errN: 0 });
+    n.attempts++; if (r.reached) n.hits++;
+    if (r.holdMeanAbs != null) { n.errSum += r.holdMeanAbs; n.errN++; }
+    this.save();
+  },
+  // Worst success rate first; ties go to the bend tried most often.
+  nextToPractice() {
+    const e = Object.entries(this.perNote).filter(([id]) => harp.notes[id] && harp.notes[id].bend > 0);
+    if (!e.length) return null;
+    e.sort((a, b) => (a[1].hits / a[1].attempts) - (b[1].hits / b[1].attempts) || b[1].attempts - a[1].attempts);
+    return { id: e[0][0], ...e[0][1] };
+  },
+};
 let harp, target, practiceTargetId = '4D1', lesson = null, view = 'train';
 const tracker = new Tracker(CONFIG);
 const detect = createDetector(4096);
@@ -943,7 +1047,9 @@ let det = { status: 'idle' }, mode = 'free', freeHist = [], freeReed = null, hit
 function applySettings() {
   const s = Store.data.settings;
   CONFIG.grayCents = s.gray; CONFIG.blueCents = Math.min(s.blue, s.gray - 1);
-  CONFIG.transientMs = s.transient; CONFIG.reachMs = s.reach; DETECT.minLevel = s.minLevel;
+  CONFIG.transientMs = s.transient; CONFIG.reachMs = s.reach;
+  DETECT.minLevel = s.minLevel;
+  if (s.cal) { DETECT.snrOnset = s.cal.snrOnset; DETECT.snrHold = s.cal.snrHold; DETECT.confStrong = s.cal.confStrong; } DETECT.minLevel = s.minLevel;
   $('sGray').value = s.gray; $('sBlue').value = CONFIG.blueCents; $('sTrans').value = s.transient;
   $('sReach').value = s.reach; $('sMin').value = s.minLevel; $('vol').value = s.volume; $('timbre').value = s.timbre;
   $('keySel').value = s.key;
@@ -986,6 +1092,71 @@ const Tone = {
   play(freq, ms = 1400) { this.start(freq); this.stopAfter(ms); },
   blocking(now) { return !!this.voice || now < this.blockUntil; },
 };
+
+// ---------- calibration: measure the room, then a soft note, and set thresholds from both ----------
+const Calib = {
+  active: false, phase: null, until: 0, frames: [], result: null,
+  ROOM_MS: 2500, NOTE_MS: 4000,
+  start() {
+    if (!audio.on) { this.say('Start the microphone first.'); return; }
+    this.active = true; this.phase = 'room'; this.frames = []; this.until = performance.now() + this.ROOM_MS;
+    this.say('Measuring your room. Stay quiet and do not play…');
+    $('calBtn').disabled = true;
+  },
+  cancel() { this.active = false; this.phase = null; $('calBtn').disabled = false; },
+  say(msg) { const e = $('calMsg'); if (e) e.textContent = msg; },
+  // Called once per audio frame from the main loop. Uses real measurements only.
+  feed(fr, now) {
+    if (!this.active) return;
+    this.frames.push({ rms: fr.rms, conf: fr.conf, freq: fr.freq });
+    const left = Math.max(0, this.until - now) / 1000;
+    if (this.phase === 'room') {
+      this.say(`Measuring your room. Stay quiet… ${left.toFixed(1)} s`);
+      if (now >= this.until) {
+        const r = this.frames.map(f => f.rms).sort((a, b) => a - b);
+        this.room = r[Math.floor(r.length * 0.9)] || 0.0002;   // 90th percentile, so a cough does not set it
+        this.roomMed = r[r.length >> 1] || 0.0002;
+        this.phase = 'note'; this.frames = []; this.until = now + this.NOTE_MS;
+      }
+      return;
+    }
+    this.say(`Now play one steady note as softly as you normally play… ${left.toFixed(1)} s`);
+    if (now < this.until) return;
+    this.finish();
+  },
+  finish() {
+    const f = this.frames, loud = f.map(x => x.rms).sort((a, b) => b - a);
+    const note = loud.length ? loud[Math.floor(loud.length * 0.25)] : 0;      // upper quartile of the take
+    const voiced = f.filter(x => x.rms >= note * 0.5 && x.freq);
+    const confs = voiced.map(x => x.conf).sort((a, b) => a - b);
+    const medConf = confs.length ? confs[confs.length >> 1] : 0;
+    const ratio = note / Math.max(this.room, 1e-7);
+    this.active = false; $('calBtn').disabled = false;
+    if (note < this.room * 1.5 || voiced.length < 8) {
+      this.say(`That was too quiet to separate from the room (note ${db(note)}, room ${db(this.room)}). Nothing changed. Move the phone closer and try again.`);
+      return;
+    }
+    if (medConf < 0.6) {
+      this.say(`That was mostly breath noise: the pitch was unclear (clarity ${medConf.toFixed(2)}). Nothing changed. Try one hole only, without the neighbouring holes sounding.`);
+      return;
+    }
+    // Onset must clear the room comfortably; continuation is allowed lower so soft decays and deep
+    // bends are not dropped. Both are placed relative to the soft note actually measured.
+    const cal = {
+      // Based mainly on the measured room. Capped so that calibrating on a loud note cannot lock out
+      // quieter playing later.
+      minLevel: clamp(Math.max(this.room * 1.6, Math.min(note * 0.10, 0.0012)), 0.00005, 0.003),
+      snrOnset: clamp(ratio * 0.35, 1.6, 3.5),
+      snrHold: clamp(ratio * 0.18, 1.2, 2.2),
+      confStrong: clamp(Math.min(0.88, medConf - 0.06), 0.55, 0.9),
+      note, room: this.room, medConf, at: Date.now(),
+    };
+    Store.data.settings.cal = cal; Store.data.settings.minLevel = cal.minLevel; Store.save(); applySettings();
+    this.say(`Note confirmed. Soft note ${db(note)}, room ${db(this.room)}, clarity ${medConf.toFixed(2)}. `
+      + `New thresholds: start a note above ${db(cal.minLevel)} (${cal.snrOnset.toFixed(1)}× the room), keep it down to ${cal.snrHold.toFixed(1)}×.`);
+  },
+};
+const db = x => x > 0 ? (20 * Math.log10(x)).toFixed(1) + ' dBFS' : '—';
 
 // ---------- microphone ----------
 function showNotice(msg) { const n = $('micNotice'); n.textContent = msg; n.classList.toggle('on', !!msg); }
@@ -1048,7 +1219,11 @@ function setTarget(noteId, mode) {
   hist = []; disp = null;
   $('tTab').textContent = n.tab; $('tName').textContent = n.name; $('tHz').textContent = n.freq.toFixed(2) + ' Hz';
   const lad = ladderFor(harp, n);
-  $('tDesc').textContent = n.desc[0].toUpperCase() + n.desc.slice(1) + '. Path on this hole: ' + lad.map(x => x.pc).join(' → ');
+  const nat = lad[0], drop = (nat.midi - n.midi) * 100;
+  const steps = drop === 0 ? '' : drop % 100 === 0 ? `${drop / 100} half step${drop === 100 ? '' : 's'}` : '';
+  $('tDesc').innerHTML = n.bend > 0
+    ? `Start on <b>${nat.pc}${nat.name.slice(-1)}</b> (${nat.desc}), then bend down <b>${drop}¢</b>${steps ? ` (${steps})` : ''} to <b>${n.pc}${n.name.slice(-1)}</b>. Path on this hole: ${lad.map(x => x.id === n.id ? '<b>' + x.pc + '</b>' : x.pc).join(' → ')}`
+    : `${n.desc[0].toUpperCase() + n.desc.slice(1)}, no bend. Path on this hole: ${lad.map(x => x.id === n.id ? '<b>' + x.pc + '</b>' : x.pc).join(' → ')}`;
   document.querySelectorAll('.chip').forEach(c => { c.classList.toggle('sel', c.dataset.id === n.id); c.classList.toggle('lad', lad.some(x => x.id === c.dataset.id)); });
   updateHoldGoal();
 }
@@ -1110,7 +1285,7 @@ function renderDetected(D) {
   const el = $('det'), on = D.hole != null;
   el.classList.toggle('on', on && D.status === 'active'); el.classList.toggle('dim', on && D.status === 'release');
   $('detStatus').textContent = !audio.on ? 'Microphone off' : Tone.blocking(performance.now()) ? 'Paused while the reference plays'
-    : D.status === 'active' ? 'Hearing it now' : D.status === 'release' ? 'Last note heard' : D.status === 'confirming' ? 'Confirming…' : 'Listening… play any hole';
+    : D.status === 'active' ? 'Hearing it now' : D.status === 'release' ? 'Last note heard — not playing now' : D.status === 'confirming' ? 'Confirming…' : 'Listening… play any hole';
   const dirEl = $('detDir');
   if (!on) {
     $('detHole').textContent = '—'; $('detNote').textContent = '—'; dirEl.textContent = '—'; dirEl.className = 'det-dir';
@@ -1119,7 +1294,9 @@ function renderDetected(D) {
     const a = D.cands.map(e => `${e.hole} ${e.dir}`);
     $('detHole').textContent = D.cands.map(e => e.hole).join('/'); dirEl.textContent = D.cands.map(e => dirWord(e.dir)).join(' or '); dirEl.className = 'det-dir amb';
     $('detNote').textContent = D.entry.name;
-    $('detAmb').hidden = false; $('detAmb').textContent = `${a.join(' and ')} make the same pitch (${D.entry.name}). Sound alone can't tell which one you're playing.`;
+    $('detAmb').hidden = false;
+    $('detAmb').textContent = `${a.join(' and ')} make the same pitch (${D.entry.name}). Sound alone can't tell which one you're playing.`
+      + (D.likelyWhy ? ' ' + D.likelyWhy[0].toUpperCase() + D.likelyWhy.slice(1) : '');
     $('detBend').textContent = 'None'; $('detCents').textContent = fmtCents(D.centsOffset);
   } else {
     $('detHole').textContent = D.hole; dirEl.textContent = dirWord(D.dir); dirEl.className = 'det-dir ' + D.dir;
@@ -1141,8 +1318,8 @@ function renderDetected(D) {
 function freeCoach(D) {
   if (!audio.on) return 'Start the microphone. BendLab will show which hole you are playing.';
   if (Tone.blocking(performance.now())) return 'Listen to the reference.';
-  if (D.hole == null) return D.rawFreq && !D.accepted && /clarity|threshold/.test(D.reason) ? 'Hearing something, but not clearly enough to call it a note.' : 'Play any hole.';
-  if (D.ambiguous) return `${D.entry.name}: hole ${D.cands[0].hole} ${D.cands[0].dir} or hole ${D.cands[1].hole} ${D.cands[1].dir}.`;
+  if (D.hole == null) return D.accepted ? 'Confirming the note…' : (D.rms > 0 && plainReason(D)) || 'Play any hole.';
+  if (D.ambiguous) return `${D.entry.name}: hole ${D.cands[0].hole} ${D.cands[0].dir} or hole ${D.cands[1].hole} ${D.cands[1].dir}. Sound alone cannot tell which.`;
   const where = `Hole ${D.hole} ${D.dir}`;
   if (D.kind === 'overblow' || D.kind === 'overdraw') return `${where}: ${D.kind}, ${D.entry.name}.`;
   if (D.bend.cents < 25) return `${where}, ${D.entry.name}.`;
@@ -1151,10 +1328,10 @@ function freeCoach(D) {
 function renderDebug(D, now) {
   if (!$('dbg').open || now - dbgT < 100) return; dbgT = now;
   const f = x => x == null ? '—' : x;
-  const db = x => x > 0 ? (20 * Math.log10(x)).toFixed(1) + ' dBFS' : '—';
   $('dbgPre').textContent = [
     `mode: ${mode}   key: ${harp.key.name}   status: ${D.status}`,
     `frame: ${D.reason || '—'}`,
+    `in plain words: ${plainReason(D)}`,
     `raw frequency: ${D.rawFreq ? D.rawFreq.toFixed(2) + ' Hz' : '—'}${D.octave ? '  (octave repaired ×' + Math.pow(2, D.octave) + ')' : ''}`,
     `smoothed frequency: ${D.smoothFreq ? D.smoothFreq.toFixed(2) + ' Hz' : '—'}`,
     `input level (RMS): ${D.rms != null ? D.rms.toFixed(5) : '—'}  (${db(D.rms)})`,
@@ -1284,10 +1461,15 @@ function verdictShort(r) {
   if (r.mode === 'discover') return r.discovered ? 'Bend detected.' : r.bent ? 'The pitch moved, but not far enough. Aim for a bigger drop.' : 'No bend detected yet. The pitch stayed near the natural note.';
   if (r.mode === 'direct' && r.initialCents != null && !r.initialHit)
     return r.startedAboveSlid ? `You started ${fmtCents(r.initialCents)} from the target and slid into it. Try landing on it directly.` : `First stable pitch ${fmtCents(r.initialCents)}.`;
-  if (r.reached) return r.overshoots ? `Reached ${t.pc}, after passing it ${r.overshoots}×.` : `Reached ${t.pc}.`;
+  if (r.reached) {
+    if (r.jitter != null && r.jitter > 12) return `Reached ${t.pc}, but the pitch wobbled ±${r.jitter.toFixed(0)}¢. Next: hold it with a softer, steadier breath.`;
+    if (r.drift != null && Math.abs(r.drift) > 12) return `Reached ${t.pc}, then drifted ${r.drift > 0 ? 'sharp' : 'flat'}. Next: hold the same mouth shape once you land.`;
+    return r.overshoots ? `Reached ${t.pc} after passing it ${r.overshoots}×. Next: stop the bend as soon as the number reaches 0.` : `Reached ${t.pc}.`;
+  }
   if (r.overshoots) return `You passed ${t.pc} and did not settle on it. Release the bend slightly to stop on it.`;
-  if (r.undershoot) return `Closest you got: ${fmtCents(r.closestCents)} sharp of ${t.pc}. Keep bending lower.`;
-  return `Did not stay in the gray zone long enough to count.`;
+  if (r.undershoot) return `You stopped ${fmtCents(r.closestCents)} short of ${t.pc}. Next: keep the same note going and lower it further until the number reads 0.`;
+  if (r.jitter != null && r.jitter > 12) return `You passed through ${t.pc} but the pitch moved ±${r.jitter.toFixed(0)}¢. Next: find the pitch, then hold it still for a full second.`;
+  return `You touched ${t.pc} but did not stay. Next: hold it for ${(CONFIG.reachMs / 1000).toFixed(2)} s without letting the number drift.`;
 }
 function renderSummary(r) {
   const t = harp.notes[r.noteId], s = x => (x / 1000).toFixed(2) + ' s';
@@ -1326,9 +1508,32 @@ function record(r) {
   Store.save();
   if (view === 'progress') renderProgress();
 }
-tracker.onFinish = r => { if (r.mode !== 'discover') record(r); renderSummary(r); lessonAttemptEnded(r); };
+tracker.onFinish = r => {
+  if (r.mode !== 'discover') { record(r); Session.add(r); }
+  renderSummary(r); lessonAttemptEnded(r);
+  if (view === 'progress') renderProgress();
+};
+
+function renderSession() {
+  const S = Session, el = $('sessionBody');
+  if (!S.attempts) { el.innerHTML = '<p class="empty">No scored attempts yet this session. Attempts count once BendLab confirms you are on the target hole.</p>'; return; }
+  const nx = S.nextToPractice(), n = nx && harp.notes[nx.id];
+  const rate = Math.round(100 * S.hits / S.attempts);
+  const since = S.started ? new Date(S.started).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : null;
+  el.innerHTML = `${since ? `<p class="lead">Started ${since}. Kept until you start a new one, or after a 4 hour break.</p>` : ''}<dl class="sess">
+    <div><dt>Attempts</dt><dd>${S.attempts}</dd></div>
+    <div><dt>Confirmed hits</dt><dd>${S.hits} (${rate}%)</dd></div>
+    <div><dt>Ambiguous, not scored</dt><dd>${S.ambiguous}</dd></div>
+    <div><dt>Longest steady hold</dt><dd>${(S.longest / 1000).toFixed(1)} s</dd></div>
+    <div><dt>Average time to target</dt><dd>${S.tttN ? (S.tttSum / S.tttN / 1000).toFixed(2) + ' s' : '—'}</dd></div>
+    <div><dt>Overshoots</dt><dd>${S.overshoots}</dd></div>
+  </dl>${n ? `<p class="lead">Practice next: <b>${n.tab} ${n.pc}</b> — ${nx.hits} of ${nx.attempts} held${nx.errN ? `, average ${(nx.errSum / nx.errN).toFixed(1)}¢ off` : ''}.</p>` : ''}
+  <div class="row"><button class="btn" id="sessEnd">Start a new session</button></div>`;
+  $('sessEnd').onclick = () => { Session.reset(); renderSession(); };
+}
 
 function renderProgress() {
+  renderSession();
   const key = Store.data.settings.key, kname = KEYS.find(k => k.id === key).name;
   const notes = Object.values(harp.notes).sort((a, b) => a.hole - b.hole || (a.dir > b.dir ? 1 : -1) || a.bend - b.bend);
   const rows = notes.filter(n => n.bend > 0 || Store.data.stats[key + '|' + n.id]).map(n => {
@@ -1441,6 +1646,7 @@ function frame() {
     audio.analyser.getFloatTimeDomainData(audio.buf);
     const fr = analyzeFrame(audio.buf, audio.ctx.sampleRate, detect, now);
     rms = fr.rms;
+    Calib.feed(fr, now);
     det = holeDet.feed(fr);
   } else det = holeDet.pause(now, !audio.on ? 'microphone off' : 'paused: reference tone playing');
   const rawF = det.accepted ? det.freq : null; // this frame's accepted pitch (octave-repaired), or null
@@ -1448,8 +1654,12 @@ function frame() {
   const lvlPos = v => clamp((20 * Math.log10(Math.max(v, 1e-6)) + 70) / 60, 0, 1) * 100 + '%'; // −70…−10 dBFS
   $('lvl').style.width = lvlPos(rmsSmooth); $('lvlThr').style.left = lvlPos(det.threshold || DETECT.minLevel);
   renderDetected(det); renderDebug(det, now);
-  // 2. TARGET scoring: only in Target practice, fed the detector's accepted pitch; never writes DETECTED.
-  const L = audio.on && !blocked && mode === 'target' ? tracker.feed(now, rawF) : { active: false };
+  // 2. TARGET scoring: only in Target practice, and only while the DETECTED hole and breath direction
+  // are confirmed to match the target. Ambiguous or wrong-hole audio is fed as silence, so it can
+  // neither score nor complete a lesson step. The DETECTED display above is unaffected either way.
+  const gate = mode === 'target' ? scoreGate(det, target) : null;
+  if (gate && gate.code === 'ambiguous' && now - lastAmbT > 700) { lastAmbT = now; Session.ambiguous++; Session.save(); }
+  const L = audio.on && !blocked && mode === 'target' ? tracker.feed(now, gate.ok ? rawF : null) : { active: false };
   if (prevActive && !L.active && lesson) lesson.attemptDone = false;
   prevActive = L.active;
   if (lesson) lessonCheck(L);
@@ -1457,12 +1667,10 @@ function frame() {
   if (mode === 'free') { drawFree(now); return; }
   $('centsLbl').textContent = 'Off target';
   const tb = $('tMatch');
-  if (det.hole == null) { tb.textContent = ''; tb.className = 'tmatch'; }
+  if (gate.code === 'idle') { tb.textContent = ''; tb.className = 'tmatch'; }
   else {
-    const onT = det.cands.some(e => e.hole === target.hole && e.dir === target.dir && !e.kind.startsWith('over'));
-    tb.textContent = onT ? `You're on the target hole (${target.hole} ${target.dir}).`
-      : `You're playing ${det.ambiguous ? det.cands.map(e => e.hole + ' ' + e.dir).join(' or ') : det.hole + ' ' + det.dir}. The target is ${target.hole} ${target.dir}.`;
-    tb.className = 'tmatch ' + (onT ? 'ok' : 'no');
+    tb.textContent = gate.ok ? gate.reason : gate.reason + (gate.code === 'ambiguous' ? '' : ' Scoring is paused.');
+    tb.className = 'tmatch ' + (gate.ok ? 'ok' : gate.code === 'ambiguous' ? 'amb' : 'no');
   }
   // display smoothing: median-filtered pitch, then adaptive exponential smoothing (fast on real moves, calm on jitter)
   if (L.active && L.voiced && L.zoneNat != null) {
@@ -1497,7 +1705,11 @@ function frame() {
   const hv = L.active ? (useBlue ? L.blueRunMs : L.holdMs) || 0 : 0;
   const hf = $('holdFill'); hf.style.width = clamp(hv / goal, 0, 1) * 100 + '%'; hf.classList.toggle('blue', !!(useBlue || (L.active && L.inBlue)));
   $('holdTxt').textContent = (useBlue ? 'Blue ' : 'Hold ') + (hv / 1000).toFixed(1) + ' s';
-  $('coach').textContent = !audio.on ? 'Start the microphone to begin. Real-time training needs to hear your harmonica.' : blocked ? 'Listen to the target.' : coachMessage(tracker);
+  $('coach').textContent = !audio.on ? 'Start the microphone to begin. Real-time training needs to hear your harmonica.'
+    : blocked ? 'Listen to the target.'
+    : gate.code === 'ambiguous' ? gate.reason + ' Stop the note and start it again on the hole you mean.'
+    : gate.code === 'wrong' ? gate.reason + ` Move to hole ${target.hole} and ${target.dir}.`
+    : coachMessage(tracker);
 
   drawMeter(now, tracker.ladder, target.id, tracker.targetNat, hist); drawZone(dc);
 }
@@ -1534,9 +1746,10 @@ function init() {
   Store.load();
   $('keySel').innerHTML = KEYS.map(k => `<option value="${k.id}">${k.name}</option>`).join('');
   practiceTargetId = Store.data.settings.target || '4D1';
+  Session.load();
   applySettings(); readColors(); rebuildHarp(); renderLevels(); renderProgress();
   setMode(Store.data.settings.mode === 'target' ? 'target' : 'free');
-  window.BendLab = { get det() { return det; }, get mode() { return mode; }, get target() { return target; }, setMode, choose, holeDet }; // for automated tests
+  window.BendLab = { get det() { return det; }, get mode() { return mode; }, get target() { return target; }, get gate() { return target ? scoreGate(det, target) : null; }, setMode, choose, holeDet, Session, Calib, scoreGate, DETECT }; // for automated tests
   $('micBtn').onclick = toggleMic;
   $('hearBtn').onclick = () => Tone.play(target.freq, 2000);
   $('stopBtn').onclick = () => Tone.stop();
@@ -1546,6 +1759,10 @@ function init() {
   $('directMode').onchange = () => { if (!lesson) setTarget(practiceTargetId); };
   const num = (id, key, lo, hi) => $(id).onchange = e => { const v = clamp(+e.target.value || 0, lo, hi); Store.data.settings[key] = v; Store.save(); applySettings(); updateHoldGoal(); };
   num('sGray', 'gray', 2, 40); num('sBlue', 'blue', 1, 20); num('sTrans', 'transient', 40, 400); num('sReach', 'reach', 100, 1000); num('sMin', 'minLevel', 0.0001, 0.05);
+  $('techList').innerHTML = TECH.map(x => `<li>${x}</li>`).join('');
+  $('calBtn').onclick = () => Calib.start();
+  if (Store.data.settings.cal) { const c = Store.data.settings.cal;
+    $('calMsg').textContent = `Calibrated ${new Date(c.at).toLocaleDateString()}: start above ${db(c.minLevel)}, ${c.snrOnset.toFixed(1)}× room to start, ${c.snrHold.toFixed(1)}× to continue.`; }
   $('modeFree').onclick = () => setMode('free');
   $('modeTarget').onclick = () => setMode('target');
   $('resetBtn').onclick = () => { if (confirm('Reset all stats and level progress?')) { Store.data.stats = {}; Store.data.levels = {}; Store.save(); renderProgress(); renderLevels(); } };
